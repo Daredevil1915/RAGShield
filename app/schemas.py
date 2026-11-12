@@ -49,6 +49,7 @@ class ChatResponse(BaseModel):
     cited: bool
     grounding: Optional[float] = None
     timings_ms: Dict[str, int]
+    generation_mode: Literal["llm", "extractive"] = "llm"
 
 
 class DocumentOut(BaseModel):

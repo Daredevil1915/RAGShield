@@ -11,7 +11,7 @@ An end-to-end application for cited PDF question answering and controlled retrie
 [![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![Streamlit](https://img.shields.io/badge/Streamlit-FF4B4B?logo=streamlit&logoColor=white)](https://streamlit.io/)
 
-[Overview](#overview) &nbsp;?&nbsp; [Quick start](#quick-start) &nbsp;?&nbsp; [Deployment](docs/DEPLOYMENT.md) &nbsp;?&nbsp; [Research](docs/RESEARCH.md)
+[Overview](#overview) &nbsp;·&nbsp; [Quick start](#quick-start) &nbsp;·&nbsp; [Deployment](docs/DEPLOYMENT.md) &nbsp;·&nbsp; [Research](docs/RESEARCH.md)
 
 </div>
 
@@ -26,16 +26,20 @@ RAGShield connects a document question-answering workflow with an experimental e
 | **Document Q&A** | Upload PDFs, ask follow-up questions, filter the document library, and inspect answers with page-level citations. |
 | **Security Research** | Compare clean and poisoned responses, inspect blocker retrieval, measure answer jamming, and export experiment results. |
 
-The hosted application uses **Ollama Cloud for chat** and **OpenAI embeddings for semantic search**. Inference runs through cloud APIs, independently of the developer's computer.
+The public demo opens with a built-in PDF and a prepared research corpus. **Ollama Cloud generates live answers**;
+lightweight **word-feature search runs on Render** without embedding API credits or model downloads. If generation is
+unavailable, document Q&A shows clearly labelled source excerpts with citations. No running developer laptop is required.
+
+**[Open the live demo](https://ragshield-aqw1.onrender.com)** | Start with a suggested question or upload your own PDF.
 
 ## Key features
 
-- **Evidence-backed answers** ? document and page references with expandable source passages.
-- **Grounding checks** ? relevance filtering and lexical checks to flag unsupported responses.
-- **Document management** ? content-based duplicate detection, search filters and indexed-document deletion.
-- **Controlled experiments** ? isolated research collections with blocker cleanup after each run.
-- **Transparent evaluation** ? separate reporting for retrieval success and answer jamming.
-- **Deployment support** ? Render Blueprint, process supervision, environment-based configuration and automated CI.
+- **Evidence-backed answers** — document and page references with expandable source passages.
+- **Grounding checks** — relevance filtering and lexical checks to flag unsupported responses.
+- **Document management** — content-based duplicate detection, search filters and indexed-document deletion.
+- **Controlled experiments** — isolated research collections with blocker cleanup after each run.
+- **Transparent evaluation** — separate reporting for retrieval success and answer jamming.
+- **Deployment support** — Render Blueprint, process supervision, environment-based configuration and automated CI.
 
 ## Architecture
 
@@ -43,22 +47,24 @@ The hosted application uses **Ollama Cloud for chat** and **OpenAI embeddings fo
 flowchart LR
     UI[Streamlit UI] --> API[FastAPI]
     API --> PDF[PDF ingestion]
-    PDF --> EMB[Hosted embedding API]
+    PDF --> EMB[Word-feature vectors on Render]
     EMB --> DB[(ChromaDB)]
     API --> RET[Semantic retrieval]
     DB --> RET
     RET --> LLM[Ollama Cloud]
     LLM --> CHECK[Grounding and citations]
+    RET -. Generation unavailable .-> EX[Source-only excerpts]
+    EX --> CHECK
     CHECK --> UI
 ```
 
 The research module uses a separate experimental collection to compare the clean pipeline with a poisoned version. Shared model adapters support Ollama Cloud and OpenAI-compatible APIs.
 
-**Stack:** Python ? FastAPI ? Streamlit ? LangChain ? ChromaDB ? PyPDF ? Ollama Cloud ? OpenAI API
+**Stack:** Python — FastAPI — Streamlit — LangChain — ChromaDB — PyPDF — Ollama Cloud — OpenAI API
 
 ## Quick start
 
-**Requirements:** Python 3.12, an Ollama Cloud API key and an OpenAI API key.
+**Requirements:** Python 3.12. An Ollama Cloud API key enables live generation; document search and source-only answers work without one. OpenAI credits are not required for the public demo.
 
 ```bash
 git clone https://github.com/Daredevil1915/RAGShield.git
@@ -73,13 +79,14 @@ pip install -r requirements-app.txt
 cp .env.example .env
 ```
 
-Set `OLLAMA_API_KEY` and `OPENAI_API_KEY` in `.env`, then start the application:
+Set `OLLAMA_API_KEY` in `.env` to enable live generation, then start the application:
 
 ```bash
 python scripts/start_render.py
 ```
 
-Open **http://localhost:10000**. Upload a text-based PDF to begin, or switch to Security Research and prepare the demo corpus.
+Open **http://localhost:10000**. The guide is indexed automatically. Ask a suggested question, upload a text-based PDF,
+or switch to Security Research for a live comparison or a clearly labelled recorded project experiment.
 
 For hosted setup, follow the **[Render deployment guide](docs/DEPLOYMENT.md#deploy-on-render)**. Provider alternatives, environment settings and storage configuration are documented there.
 
@@ -88,6 +95,10 @@ For hosted setup, follow the **[Render deployment guide](docs/DEPLOYMENT.md#depl
 The project studies **availability attacks on RAG systems** using black-box blocker optimization and adversarial suffix methods. Its central distinction is that **a retrieved blocker does not necessarily jam an answer**.
 
 The hosted research demo contains 64 MS-MARCO passages. It demonstrates the experimental workflow; it does not reproduce the original 50,024-passage benchmark. Grounding checks are heuristic and do not guarantee factual correctness or prompt-injection resistance.
+
+Public demo search uses shared vocabulary, not learned semantic similarity, and may miss paraphrases. Hosted semantic
+embeddings remain available with `APP_PUBLIC_DEMO=0` and `EMBEDDING_PROVIDER=openai`. Live research requires a working
+cloud model; recorded results and source-only answers are always identified separately.
 
 See **[Research methodology and evaluation](docs/RESEARCH.md)** for experimental definitions, corpus scope and reproduction requirements.
 

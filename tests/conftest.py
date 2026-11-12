@@ -33,6 +33,7 @@ def offline_model_defaults(monkeypatch):
     # Never use developer credentials or the deployment provider in offline tests.
     monkeypatch.setenv("MODEL_PROVIDER", "ollama")
     monkeypatch.setenv("EMBEDDING_PROVIDER", "ollama")
+    monkeypatch.setenv("APP_PUBLIC_DEMO", "0")
 
 STOPWORDS = {
     "the", "a", "an", "is", "are", "was", "were", "of", "to", "in", "on", "and", "or", "what", "who",

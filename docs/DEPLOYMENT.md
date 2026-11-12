@@ -2,24 +2,43 @@
 
 [Back to RAGShield](../README.md)
 
-## Required API keys
+## Public interview demo
 
-The default deployment uses Ollama Cloud for chat and OpenAI for embeddings. Enter the actual secret keys in the matching Render Value fields.
+The default hosted configuration prioritizes a usable visitor experience:
 
-| Environment variable | Purpose | Key management |
+- A built-in three-page PDF is indexed automatically.
+- Word-feature retrieval runs on Render with no embedding API, credits or model downloads.
+- Ollama Cloud generates live answers when its configured key is available.
+- If generation fails, document Q&A returns exact retrieved sentences with citations and a visible **Source-only answer** label.
+- The 64-passage research corpus is prepared automatically. Live experiments use the cloud model; an explicitly recorded project run can be explored independently.
+
+Word-feature retrieval uses vocabulary overlap. It is intentionally lighter than a semantic embedding model and may miss paraphrases. Research never replaces a failed live run with a fabricated outcome.
+
+## Deploy on Render
+
+[Deploy to Render](https://render.com/deploy?repo=https://github.com/Daredevil1915/RAGShield)
+
+1. Create a Blueprint from this repository. Render reads `render.yaml`.
+2. Enter `OLLAMA_API_KEY` from [Ollama account keys](https://ollama.com/settings/keys) to enable live generation. OpenAI credentials are not required for the public demo.
+3. Open the service URL. There is no login or visitor configuration step.
+4. Try a suggested question about the sample guide, upload a PDF, or open Security Research and run a clean baseline followed by a prebuilt-blocker experiment.
+
+| Variable | Public demo value | Purpose |
 | --- | --- | --- |
-| `OLLAMA_API_KEY` | Ollama Cloud chat | [Ollama account keys](https://ollama.com/settings/keys) |
-| `OPENAI_API_KEY` | Hosted document and query embeddings | [OpenAI API keys](https://platform.openai.com/api-keys) |
+| `APP_PUBLIC_DEMO` | `1` | Enables no-key retrieval, the sample guide and source-only fallback |
+| `MODEL_PROVIDER` | `ollama_cloud` | Uses Ollama's hosted API for live generation |
+| `EMBEDDING_PROVIDER` | `hashing` | Deterministic word-feature vectors on Render |
+| `APP_RESEARCH_DEMO` | `1` | Uses the small demonstration corpus |
+| `APP_MIN_RELEVANCE` | `0.08` | Demo retrieval threshold |
+| `OLLAMA_CLOUD_MODEL` | `gemma4:31b` | Configurable cloud chat model |
 
-Store credentials in Render environment settings or a local `.env` file. Never commit them to the repository.
+Public demo mode selects word-feature retrieval even if a previously deployed service still has `EMBEDDING_PROVIDER=openai`. This prevents an exhausted embedding account from breaking the visitor workflow. Set `APP_PUBLIC_DEMO=0` to honor advanced provider settings.
 
-## Run with cloud APIs
+The launcher exposes Streamlit on Render's `$PORT` and keeps the API on loopback. `/_stcore/health` checks process health; `/health` reports configuration without paid model requests. A configured key does not certify live provider access.
 
-Use Python 3.12. No Ollama installation, model downloads or running laptop are required for the deployed demo.
-The default setup calls [Ollama Cloud](https://docs.ollama.com/cloud) for chat (`gemma4:31b`) and a hosted
-[embedding API](https://developers.openai.com/api/reference/resources/embeddings/methods/create) for PDF search
-(`text-embedding-3-small`). Ollama's current cloud catalog lists chat models rather than embedding models,
-so the demo uses two API keys. Account access, quotas and billing belong to each provider.
+Free Render hosting can take time to wake after inactivity and uses a temporary filesystem. Uploaded indexes and new results can disappear on restart; the built-in samples are recreated automatically. For durable uploads, use a persistent disk under the app's data path. Visitors share the demo library. Research mutation and evaluation calls are serialized within the service.
+
+## Run on a development machine
 
 ```bash
 python -m venv .venv
@@ -27,51 +46,31 @@ python -m venv .venv
 # macOS/Linux: source .venv/bin/activate
 pip install -r requirements-app.txt
 cp .env.example .env
-# Fill in OLLAMA_API_KEY and OPENAI_API_KEY in .env before running.
 python scripts/start_render.py
 ```
 
-Open http://localhost:10000. The launcher starts the API on loopback port 8000 and stops both processes if either fails.
-On Render these processes run on Render's servers; closing or switching off your computer does not stop them.
-Document text and questions are sent to the configured cloud providers for inference.
+Open http://localhost:10000. Add `OLLAMA_API_KEY` in `.env` for live cloud generation. Your own computer is not needed once the app is deployed on Render. Store secrets in environment settings; never commit them.
 
-For a single cloud provider/key, use `MODEL_PROVIDER=openai` with `OPENAI_API_KEY` for both chat and embeddings.
-`OPENAI_BASE_URL`, `OPENAI_CHAT_MODEL` and `OPENAI_EMBED_MODEL` also support compatible hosted APIs.
-If the chat provider does not serve embeddings, configure `OPENAI_EMBED_BASE_URL` and `OPENAI_EMBED_API_KEY`
-for a separate embedding service. Compatible APIs must return OpenAI-style chat and float embedding responses.
+## Optional semantic retrieval
 
-## Deploy on Render
+For the full hosted embedding configuration, set:
 
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/Daredevil1915/RAGShield)
+```dotenv
+APP_PUBLIC_DEMO=0
+MODEL_PROVIDER=ollama_cloud
+EMBEDDING_PROVIDER=openai
+OLLAMA_API_KEY=your-ollama-key
+OPENAI_API_KEY=your-embedding-key
+OPENAI_EMBED_MODEL=text-embedding-3-small
+APP_MIN_RELEVANCE=0.55
+```
 
-1. Create a Render **Blueprint** from this repository; it reads `render.yaml`.
-2. Set `OLLAMA_API_KEY` (from [Ollama account keys](https://ollama.com/settings/keys)) and `OPENAI_API_KEY`
-   (for hosted embeddings) as Render environment secrets. The Blueprint sets `MODEL_PROVIDER=ollama_cloud`,
-   `EMBEDDING_PROVIDER=openai` and the default models. No local Ollama server or tunnel is used.
-3. Deploy and open the service URL. The app opens directly to the document workspace without a login screen.
-4. Open **Service status** in the sidebar to check that the cloud APIs are configured, then upload a PDF,
-   ask a question, and select **Explore the evidence** to inspect its source passages.
-   In Security Research select **Prepare research workspace**, then **Run clean baseline** before running an experiment.
+`OPENAI_BASE_URL` can target a compatible API. A separate embedding endpoint/key can be set with `OPENAI_EMBED_BASE_URL` and `OPENAI_EMBED_API_KEY`. With `MODEL_PROVIDER=openai`, the same compatible provider can supply chat through `OPENAI_CHAT_MODEL`.
 
-The UI binds to Render's `$PORT`; the document API stays on loopback. Render checks `/_stcore/health` for process health.
-The API `/health` checks cloud configuration without making paid inference calls; `configured` does not certify credentials,
-quota or live model access. Failed provider requests show an actionable error without exposing keys or raw provider responses.
+Embedding model/provider changes use separate collections. Re-upload documents and prepare the research corpus for that configuration. Recalibrate retrieval thresholds when changing models.
 
-The Blueprint uses a free service for demonstrations. Uploaded indexes and experiment output disappear on restart, redeploy or idle spin-down. For persistent data, use a paid service with a disk mounted at `/opt/render/project/src/data`, keeping `APP_DB_DIR` under that path. See [Render free service limits](https://render.com/docs/free) and the [Blueprint reference](https://render.com/docs/blueprint-spec). Model hosting is separate and may have its own cost.
+## Provider availability
 
-Visitors share one document library and experiment store. Run one research experiment at a time.
+The public demo never calls OpenAI embeddings. If Ollama Cloud is unavailable, PDF retrieval and source-only answers continue; live attack evaluation requires generation. The recorded project experiment is labelled and kept separate from fresh results.
 
-## Embedding API errors during setup
-
-The default configuration uses OpenAI for document embeddings. An HTTP 429 response can indicate either temporary throttling or an account quota restriction.
-
-| Error | Action |
-| --- | --- |
-| Insufficient quota or exhausted credits | Check the embedding provider's API billing, credit balance and project limits. Repeated setup attempts do not restore quota. |
-| Project or organization spending limit | Review the corresponding account limit before retrying. |
-| Temporary rate limit | The app retries identified transient failures up to twice and respects short `Retry-After` delays. Longer delays are shown in the error message. |
-| Unspecified HTTP 429 | Check both quota and rate limits; the status code alone does not identify the cause. |
-
-After resolving provider access, select **Prepare research workspace** again. Completed corpus batches are retained and skipped on retry. The app does not automatically switch embedding models or mix vectors from different providers.
-
-See the [OpenAI error-code reference](https://developers.openai.com/api/docs/guides/error-codes) for account and rate-limit distinctions.
+In optional semantic mode, HTTP 429 can indicate account quota or temporary throttling. Known quota/billing errors require account action. Identified transient rate limits receive bounded retries that respect `Retry-After`; partial corpus setup resumes without re-embedding completed batches. See the [OpenAI error-code reference](https://developers.openai.com/api/docs/guides/error-codes).

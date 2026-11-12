@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 from ui.theme import apply_theme, brand, hero, step_card
+from app.model_backend import public_demo_mode
 
 API_URL = os.getenv("API_URL", "http://localhost:8000").rstrip("/")
 HISTORY_TO_SEND = 10
@@ -82,6 +83,11 @@ def render_sources(message: dict):
 with st.sidebar:
     st.subheader("Your library")
     st.caption("Add PDFs to give your conversation a source.")
+    if public_demo_mode() and st.button("Load sample PDF", width="stretch", icon=":material/description:"):
+        _, error = api("POST", "/demo/document")
+        ss.upload_notes = [("error", error)] if error else [("success", "The RAGShield guide is ready. Try a starter question.")]
+        get_health.clear()
+        st.rerun()
     files = st.file_uploader("Upload PDFs", type=["pdf"], accept_multiple_files=True,
                              key=f"uploader_{ss.uploader_key}", help="Text-based PDFs, up to 25 MB each.")
     if files and st.button("Add to library", type="primary", width="stretch", icon=":material/add:"):
@@ -134,8 +140,13 @@ with st.sidebar:
         if health_error:
             st.error(health_error)
         elif health["status"] == "configured":
-            st.info("Cloud APIs configured")
-            st.caption("Access is verified when you upload or ask a question.")
+            backend = health.get("backend") or {}
+            if backend.get("retrieval") == "keyword":
+                st.info("Demo search ready on Render")
+                st.caption("Word-feature retrieval needs no embedding API credits. Cloud generation is optional; source-only answers remain available.")
+            else:
+                st.info("Cloud APIs configured")
+                st.caption("Access is verified when you upload or ask a question.")
         elif health["status"] == "ok":
             st.success("Backend ready")
         else:
@@ -179,7 +190,9 @@ if not ss.messages:
     else:
         st.markdown("#### Where would you like to start?")
         st.caption("Choose a starting point, or write your own question below.")
-        prompts = ["What are the main findings?", "What limitations are mentioned?", "What methods are described?"]
+        sample = any(document["filename"] == "RAGShield-Guide.pdf" for document in documents)
+        prompts = (["How does RAGShield answer questions?", "What is jamming success?", "What are the demo limitations?"] if sample else
+                   ["What are the main findings?", "What limitations are mentioned?", "What methods are described?"])
         for index, (column, prompt) in enumerate(zip(st.columns(3), prompts)):
             if column.button(prompt, key=f"suggestion_{index}", width="stretch"):
                 suggested_question = prompt
@@ -187,6 +200,8 @@ if not ss.messages:
 for message in ss.messages:
     avatar = ":material/person:" if message["role"] == "user" else ":material/shield:"
     with st.chat_message(message["role"], avatar=avatar):
+        if message.get("generation_mode") == "extractive":
+            st.caption("SOURCE-ONLY ANSWER | Cloud generation is unavailable; these are extracted passages, not an LLM response.")
         st.markdown(message["content"])
         if message["role"] == "assistant":
             render_sources(message)
@@ -210,6 +225,7 @@ if question:
             message = {"role": "assistant", "content": data["answer"], "status": data["status"],
                        "sources": data["sources"], "cited": data["cited"], "grounding": data.get("grounding"),
                        "standalone": data["standalone_question"], "question": question,
+                       "generation_mode": data.get("generation_mode", "llm"),
                        "timings_ms": data.get("timings_ms", {})}
         st.markdown(message["content"])
         render_sources(message)

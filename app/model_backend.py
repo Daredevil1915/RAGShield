@@ -5,6 +5,7 @@ import hashlib
 import math
 import os
 import random
+import re
 import time
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
@@ -25,11 +26,18 @@ def get_model_provider() -> str:
     return provider
 
 
+def public_demo_mode() -> bool:
+    """The hosted portfolio defaults to no-key retrieval; full research is opt-in."""
+    return os.getenv("APP_PUBLIC_DEMO", "1") == "1" and get_model_provider() != "ollama"
+
+
 def get_embedding_provider() -> str:
+    if public_demo_mode():
+        return "hashing"
     default = "ollama" if get_model_provider() == "ollama" else "openai"
     provider = os.getenv("EMBEDDING_PROVIDER", default).strip().lower()
-    if provider not in {"ollama", "openai"}:
-        raise ModelBackendError("EMBEDDING_PROVIDER must be openai or ollama.")
+    if provider not in {"ollama", "openai", "hashing"}:
+        raise ModelBackendError("EMBEDDING_PROVIDER must be hashing, openai or ollama.")
     if get_model_provider() != "ollama" and provider == "ollama":
         raise ModelBackendError("Cloud mode requires EMBEDDING_PROVIDER=openai; local Ollama is not used.")
     return provider
@@ -67,7 +75,9 @@ def require_cloud_config(kind: str) -> tuple[str, str, str]:
 
 def embedding_namespace() -> str:
     """Do not reuse vectors across embedding models, endpoints or prefix schemes."""
-    if get_embedding_provider() == "ollama":
+    if get_embedding_provider() == "hashing":
+        identity = ["hashing", "word-features-v1", "2048"]
+    elif get_embedding_provider() == "ollama":
         identity = ["ollama", os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434"),
                     os.getenv("OLLAMA_EMBED_MODEL", "nomic-embed-text")]
     else:
@@ -80,8 +90,8 @@ def _post(kind: str, path: str, payload: dict) -> dict:
     base, key, _ = require_cloud_config(kind)
     for attempt in range(3):
         try:
-            response = httpx.post(base + path, headers={"Authorization": f"Bearer {key}"},
-                                  json=payload, timeout=httpx.Timeout(120, connect=10))
+            timeout = httpx.Timeout(25, connect=5) if public_demo_mode() else httpx.Timeout(120, connect=10)
+            response = httpx.post(base + path, headers={"Authorization": f"Bearer {key}"}, json=payload, timeout=timeout)
             response.raise_for_status()
             data = response.json()
             if not isinstance(data, dict):
@@ -148,9 +158,20 @@ class CloudLLM:
     """The research code expects invoke(prompt) to return plain text."""
 
     def __init__(self):
-        self.model = require_cloud_config("chat")[2]
+        self.model = cloud_config("chat")[2] if public_demo_mode() else require_cloud_config("chat")[2]
+        self._unavailable_until = 0.0
 
     def invoke(self, prompt: str) -> str:
+        if public_demo_mode() and time.monotonic() < self._unavailable_until:
+            raise ModelBackendError("Cloud generation is temporarily unavailable. Source-only document answers remain available.")
+        try:
+            return self._invoke(prompt)
+        except ModelBackendError:
+            if public_demo_mode():
+                self._unavailable_until = time.monotonic() + 30
+            raise
+
+    def _invoke(self, prompt: str) -> str:
         messages = [{"role": "user", "content": prompt}]
         if get_model_provider() == "ollama_cloud":
             result = _post("chat", "/api/chat", {"model": self.model, "messages": messages,
@@ -195,12 +216,52 @@ class CloudEmbeddings(Embeddings):
         return self.embed_documents([text])[0]
 
 
+class DemoEmbeddings(Embeddings):
+    """Small deterministic word-feature vectors, not a learned semantic model.
+
+    Pure Python keeps both Render processes light. No download, API or fitting
+    step is needed, and query/document vectors always share the same mapping.
+    """
+    dimensions = 2048
+    stopwords = set("a an the and or but to of for in on at by is are was were be been being as it its this that these those what which who when where why how do does did can could would should will have has had from with about into your you me my tell please".split())
+
+    def _vector(self, text: str) -> list[float]:
+        values = [0.0] * self.dimensions
+        for word in re.findall(r"[a-z0-9]+", text.lower()):
+            if word in self.stopwords or len(word) < 2:
+                continue
+            if len(word) > 3 and word.endswith("s") and not word.endswith("ss"):
+                word = word[:-1]
+            word = word[:6]
+            index = int.from_bytes(hashlib.blake2b(word.encode(), digest_size=4).digest(), "big") % self.dimensions
+            values[index] += 1
+        values = [math.log1p(value) for value in values]
+        norm = math.sqrt(sum(value * value for value in values)) or 1.0
+        return [value / norm for value in values]
+
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        return [self._vector(text) for text in texts]
+
+    def embed_query(self, text: str) -> list[float]:
+        return self._vector(text)
+
+
 def cloud_status() -> dict:
     """Configuration check only: health polling must not incur inference charges."""
     result = {"provider": get_model_provider(), "configured": False,
               "models": {"llm": False, "embeddings": False}}
     try:
-        get_embedding_provider()
+        embedding_provider = get_embedding_provider()
+        if embedding_provider == "hashing":
+            result.update(configured=True, public_demo=public_demo_mode(), retrieval="keyword",
+                          embedding_model="Render word-feature search", models={"llm": False, "embeddings": True})
+            try:
+                require_cloud_config("chat")
+                result["models"]["llm"] = True
+                result["llm_model"] = cloud_config("chat")[2]
+            except ModelBackendError:
+                result["generation"] = "source_only"
+            return result
         require_cloud_config("chat")
         require_cloud_config("embeddings")
         result.update(configured=True, models={"llm": True, "embeddings": True},

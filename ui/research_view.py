@@ -2,12 +2,14 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import os
 from pathlib import Path
 
 import streamlit as st
 
 from ui.theme import hero, step_card
+from app.model_backend import public_demo_mode
 
 
 @st.cache_resource(show_spinner=False)
@@ -16,8 +18,15 @@ def get_service():
     if os.getenv("APP_RESEARCH_DEMO") == "1":
         from app.model_backend import embedding_namespace
         namespace = embedding_namespace()
-        return ResearchService(source_db=f"data/demo_research_source_{namespace}", source_collection="demo_corpus",
-                               exp_db=f"data/research_chroma_{namespace}")
+        state_dir = Path(os.getenv("APP_DB_DIR", "data/app_chroma")).parent
+        service = ResearchService(source_db=str(state_dir / f"demo_research_source_{namespace}"), source_collection="demo_corpus",
+                                  exp_db=str(state_dir / f"research_chroma_{namespace}"),
+                                  export_dir=str(state_dir / "research_runs"))
+        from app.model_backend import public_demo_mode
+        if public_demo_mode() and not service.experiment_status().get("ready"):
+            service.prepare_demo_corpus()
+            service.ensure_experiment_collection()
+        return service
     return ResearchService()
 
 
@@ -30,6 +39,21 @@ def render():
     ss.setdefault("rs_exports", None)
     hero("SECURITY RESEARCH", "Put your RAG pipeline to the test.",
          "Compare clean and poisoned answers. See whether a blocker reaches the model and whether the answer survives.")
+    with st.expander("Explore a recorded project experiment", icon=":material/history:"):
+        record = json.loads((Path(__file__).resolve().parents[1] / "examples/recorded_experiment.json").read_text(encoding="utf-8"))
+        result = record["result"]
+        st.caption("RECORDED PROJECT RUN | Not a live inference or a current-demo benchmark result")
+        st.markdown(f"**Target question:** {result['query']}")
+        left, right = st.columns(2)
+        left.metric("Recorded retrieval", "Retrieved" if result["retrieved"] else "Not retrieved")
+        right.metric("Recorded jamming", "Jammed" if result["jammed"] else "Answer survived")
+        st.markdown("**Clean response**")
+        st.write(result["clean_answer"])
+        st.markdown("**Poisoned response**")
+        st.write(result["poisoned_answer"])
+        st.caption("In this recorded run the blocker ranked first, but the answer survived. Retrieval success alone did not establish jamming.")
+        st.code(result["full_blocker"], language=None)
+        st.caption(record["provenance"]["note"])
     demo = os.getenv("APP_RESEARCH_DEMO") == "1"
     try:
         svc = get_service()
@@ -108,6 +132,7 @@ def render():
                 ss.rs_exports = None
             except Exception as exc:
                 st.error(f"The baseline could not finish: {exc}")
+                st.info("Live research requires cloud generation. The recorded experiment above remains available; document Q&A also supports source-only answers.")
         clean = ss.rs_clean.get(query)
         if clean:
             if clean["refuses"]:
@@ -140,7 +165,7 @@ def render():
             style, source, generation_ready = "bbo", "Generate fresh", True
             right.caption("BBO generates a blocker against the retrieved context using the configured cloud APIs.")
             quick = left.toggle("Quick experiment", value=True, help="Use fewer optimization iterations.")
-        use_judge = st.toggle("Use an LLM judge", value=True,
+        use_judge = st.toggle("Use an LLM judge", value=not public_demo_mode(),
                               help="Grade answer preservation with the model. This makes additional API calls.")
         can_run = clean is not None and not clean["refuses"] and generation_ready
         if not clean:

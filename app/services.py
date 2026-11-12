@@ -17,7 +17,7 @@ from rag_utils import create_embeddings, create_llm, get_embed_model, get_llm_mo
 from .config import Settings, get_settings
 from .documents import chunk_document, parse_pdf
 from .embeddings import NomicPrefixedEmbeddings
-from .model_backend import embedding_namespace, get_embedding_provider
+from .model_backend import embedding_namespace, get_embedding_provider, public_demo_mode
 from .rag import RAGPipeline
 from .vector_store import VectorStore
 
@@ -53,7 +53,11 @@ def build_services(settings: Optional[Settings] = None) -> Services:
     if get_embedding_provider() != "ollama":
         collection += "_" + embedding_namespace()
     store = VectorStore(embeddings, settings.db_dir, collection)
-    return Services(settings=settings, store=store, pipeline=RAGPipeline(store, llm, settings))
+    result = Services(settings=settings, store=store, pipeline=RAGPipeline(store, llm, settings))
+    if public_demo_mode() and store.count() == 0:
+        from .demo import load_demo_document
+        load_demo_document(result)
+    return result
 
 
 def get_services() -> Services:

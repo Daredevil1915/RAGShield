@@ -5,7 +5,7 @@ from urllib.request import Request, urlopen
 
 from langchain_ollama import OllamaEmbeddings, OllamaLLM
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from app.model_backend import CloudEmbeddings, CloudLLM, cloud_config, get_embedding_provider, get_model_provider
+from app.model_backend import CloudEmbeddings, CloudLLM, DemoEmbeddings, cloud_config, get_embedding_provider, get_model_provider
 
 DEFAULT_OLLAMA_BASE_URL = "http://127.0.0.1:11434"
 DEFAULT_LLM_MODEL       = "mistral"
@@ -35,6 +35,8 @@ def get_llm_model() -> str:
     return os.getenv("OLLAMA_LLM_MODEL", DEFAULT_LLM_MODEL)
 
 def get_embed_model() -> str:
+    if get_embedding_provider() == "hashing":
+        return "word-features-v1"
     if get_embedding_provider() == "openai":
         return cloud_config("embeddings")[2]
     return os.getenv("OLLAMA_EMBED_MODEL", DEFAULT_EMBED_MODEL)
@@ -100,6 +102,8 @@ def ensure_ollama_server(base_url: str) -> None:
 
 
 def create_embeddings(base_url: str = None):
+    if get_embedding_provider() == "hashing":
+        return DemoEmbeddings()
     if get_embedding_provider() == "openai":
         return CloudEmbeddings()
     resolved_url = base_url or get_ollama_base_url()

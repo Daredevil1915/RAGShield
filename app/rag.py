@@ -29,6 +29,7 @@ from typing import Any, Dict, List, Optional, Sequence
 from rag_utils import safe_display
 
 from .config import Settings
+from .model_backend import ModelBackendError, public_demo_mode
 from .vector_store import VectorStore
 
 # The exact refusal sentence the research prompt (main.py) asks Mistral for.
@@ -154,6 +155,7 @@ class RAGAnswer:
     cited: bool = False               # True if the model cited at least one valid source
     grounding: Optional[float] = None  # share of the answer's new content words found in the sources
     timings_ms: Dict[str, int] = field(default_factory=dict)
+    generation_mode: str = "llm"
 
 
 def looks_like_refusal(answer: str) -> bool:
@@ -276,7 +278,27 @@ class RAGPipeline:
             s.id = i
 
         t0 = time.perf_counter()
-        raw = _clean_llm_output(self.llm.invoke(self.build_prompt(standalone, relevant)))
+        try:
+            raw = _clean_llm_output(self.llm.invoke(self.build_prompt(standalone, relevant)))
+        except (ModelBackendError, ConnectionError):
+            if not public_demo_mode():
+                raise
+            candidates = []
+            query_words = content_words(standalone)
+            for source in relevant:
+                for sentence in re.split(r"(?<=[.!?])\s+", source.text):
+                    overlap = len(content_words(sentence) & query_words)
+                    if overlap:
+                        candidates.append((overlap / max(1, len(content_words(sentence))) ** 0.5, sentence, source))
+            candidates.sort(key=lambda row: row[0], reverse=True)
+            selected = candidates[:3]
+            if not selected:
+                return RAGAnswer(NOT_FOUND_MESSAGE, "not_found", standalone, retrieved=relevant, timings_ms=timings)
+            timings["generation"] = int((time.perf_counter() - t0) * 1000)
+            cited_sources = list({row[2].id: row[2] for row in selected}.values())
+            return RAGAnswer("\n\n".join(f"{sentence[:900]} [{source.id}]" for _, sentence, source in selected),
+                             "answered", standalone, sources=cited_sources, retrieved=relevant,
+                             cited=True, grounding=1.0, timings_ms=timings, generation_mode="extractive")
         timings["generation"] = int((time.perf_counter() - t0) * 1000)
 
         cited_ids = extract_citations(raw, len(relevant))

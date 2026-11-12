@@ -35,6 +35,8 @@ import os
 import re
 import sys
 import time
+import threading
+from functools import wraps
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -80,6 +82,14 @@ METHOD_BBO = "BBO"   # black-box blocker optimization (bbo_attack.py)
 GCG_STYLES = ["distraction", "category", "passive", "nosuffix"]
 
 COPY_BATCH = 2000  # vectors per batch when building the experimental collection
+
+
+def _exclusive(method):
+    @wraps(method)
+    def call(self, *args, **kwargs):
+        with self._experiment_lock:
+            return method(self, *args, **kwargs)
+    return call
 
 
 @dataclass
@@ -167,6 +177,7 @@ class ResearchService:
             if exp_db == "data/research_chroma":
                 exp_db += "_" + embedding_namespace()
         self.root = Path(root)
+        self._experiment_lock = threading.RLock()
         self.source_db = str(self.root / source_db)
         self.source_collection = source_collection
         self.exp_db = str(self.root / exp_db)
@@ -195,6 +206,7 @@ class ResearchService:
         return out
 
     # ── experimental collection (isolated copy of the research corpus) ─────────
+    @_exclusive
     def prepare_demo_corpus(self, progress=None):
         """Embed the small shipped demo corpus on explicit request."""
         import chromadb
@@ -237,6 +249,7 @@ class ResearchService:
             copied = 0
         return {"ready": copied == src and src > 0, "source": src, "copied": copied}
 
+    @_exclusive
     def ensure_experiment_collection(self, progress: Optional[Callable[[float, str], None]] = None) -> Dict[str, Any]:
         """Copy the research corpus vectors into the isolated experimental collection, once.
 
@@ -299,6 +312,7 @@ class ResearchService:
         return self._evaluator
 
     # ── clean pass (requirement 2) ─────────────────────────────────────────────
+    @_exclusive
     def clean_pass(self, query: str) -> Dict[str, Any]:
         """Run the clean RAG pipeline; return its answer and the top-k retrieved passages."""
         from rag_utils import safe_display
@@ -369,6 +383,7 @@ class ResearchService:
             return None
         return {"full_blocker": hit["full_blocker"], "origin": f"pre-made ({hit['file']})"}
 
+    @_exclusive
     def generate_blocker(self, query: str, method: str, style: str = "distraction", quick: bool = True) -> Dict[str, str]:
         """Freshly generate a blocker by REUSING the research generators (no algorithm changes)."""
         if method == METHOD_GCG:
@@ -458,6 +473,7 @@ class ResearchService:
             return 0
 
     # ── the experiment (requirements 6-9) ──────────────────────────────────────
+    @_exclusive
     def run_experiment(
         self, query: str, full_blocker: str, method: str, style: str, blocker_origin: str,
         use_llm_judge: bool = True, evaluator=None,

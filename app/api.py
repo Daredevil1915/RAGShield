@@ -17,7 +17,7 @@ import httpx
 from fastapi import Depends, FastAPI, File, HTTPException, Response, UploadFile, status
 
 from .documents import InvalidDocumentError
-from .model_backend import ModelBackendError, cloud_status, get_model_provider
+from .model_backend import ModelBackendError, cloud_status, get_model_provider, public_demo_mode
 from .schemas import ChatRequest, ChatResponse, DocumentOut, HealthResponse, UploadResponse
 from .services import ServiceUnavailable, Services, get_services, index_pdf, ollama_status
 
@@ -103,6 +103,14 @@ def list_documents(svc: Services = Depends(services)):
     return [DocumentOut(**d) for d in svc.store.list_documents()]
 
 
+@app.post("/demo/document", response_model=UploadResponse)
+def sample_document(svc: Services = Depends(services)):
+    if not public_demo_mode():
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Public demo mode is not enabled.")
+    from .demo import load_demo_document
+    return UploadResponse(**load_demo_document(svc))
+
+
 @app.delete("/documents/{doc_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_document(doc_id: str, svc: Services = Depends(services)):
     if svc.store.delete_document(doc_id) == 0:
@@ -134,4 +142,5 @@ def chat(req: ChatRequest, svc: Services = Depends(services)):
         cited=result.cited,
         grounding=result.grounding,
         timings_ms=result.timings_ms,
+        generation_mode=result.generation_mode,
     )

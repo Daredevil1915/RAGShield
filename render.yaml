@@ -1,4 +1,4 @@
-# Fully hosted: Ollama Cloud chat and OpenAI-compatible embedding API.
+# Public portfolio: no-key retrieval on Render, Ollama Cloud for generation.
 services:
   - type: web
     name: ragshield
@@ -16,15 +16,15 @@ services:
         value: /opt/render/project/src/data/app_chroma
       - key: APP_RESEARCH_DEMO
         value: '1'
+      - key: APP_PUBLIC_DEMO
+        value: '1'
       - key: MODEL_PROVIDER
         value: ollama_cloud
       - key: EMBEDDING_PROVIDER
-        value: openai
+        value: hashing
+      - key: APP_MIN_RELEVANCE
+        value: '0.08'
       - key: OLLAMA_API_KEY
         sync: false
       - key: OLLAMA_CLOUD_MODEL
         value: gemma4:31b
-      - key: OPENAI_API_KEY
-        sync: false
-      - key: OPENAI_EMBED_MODEL
-        value: text-embedding-3-small

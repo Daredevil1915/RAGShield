@@ -68,13 +68,15 @@ class Settings:
 
 def get_settings() -> Settings:
     d = Settings()
+    from .model_backend import get_embedding_provider
+    relevance = 0.08 if get_embedding_provider() == "hashing" else d.min_relevance
     return Settings(
         db_dir=os.getenv("APP_DB_DIR", d.db_dir),
         collection=os.getenv("APP_COLLECTION", d.collection),
         chunk_size=_int("APP_CHUNK_SIZE", d.chunk_size),
         chunk_overlap=_int("APP_CHUNK_OVERLAP", d.chunk_overlap),
         top_k=_int("APP_TOP_K", d.top_k),
-        min_relevance=_float("APP_MIN_RELEVANCE", d.min_relevance),
+        min_relevance=_float("APP_MIN_RELEVANCE", relevance),
         max_upload_mb=_int("APP_MAX_UPLOAD_MB", d.max_upload_mb),
         max_pages=_int("APP_MAX_PAGES", d.max_pages),
         max_question_chars=_int("APP_MAX_QUESTION_CHARS", d.max_question_chars),
