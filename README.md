@@ -1,99 +1,116 @@
+<div align="center">
+
 # RAGShield
 
-A research-to-application project for document question answering and RAG availability testing, built with FastAPI, Streamlit, ChromaDB, LangChain and Ollama.
+### Document intelligence. RAG security evaluation.
 
-- **Document Q&A:** upload text PDFs, ask follow-up questions, filter documents, and inspect document/page citations. Retrieval and lexical grounding checks reject some unsupported answers; these are heuristics, not a guarantee of correctness or prompt-injection protection.
-- **Security Research:** compare clean and poisoned retrieval with BBO blockers or adversarial suffixes. Retrieval success is reported separately from answer jamming, experiment storage is isolated, and injected blockers are cleaned up.
+An end-to-end application for cited PDF question answering and controlled retrieval-poisoning experiments, developed from internship research.
 
-## Run with cloud APIs
+[![Tests](https://github.com/Daredevil1915/RAGShield/actions/workflows/ci.yml/badge.svg)](https://github.com/Daredevil1915/RAGShield/actions/workflows/ci.yml)
+[![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![Streamlit](https://img.shields.io/badge/Streamlit-FF4B4B?logo=streamlit&logoColor=white)](https://streamlit.io/)
 
-Use Python 3.12. No Ollama installation, model downloads or running laptop are required for the deployed demo.
-The default setup calls [Ollama Cloud](https://docs.ollama.com/cloud) for chat (`gemma4:31b`) and a hosted
-[embedding API](https://developers.openai.com/api/reference/resources/embeddings/methods/create) for PDF search
-(`text-embedding-3-small`). Ollama's current cloud catalog lists chat models rather than embedding models,
-so the demo uses two API keys. Account access, quotas and billing belong to each provider.
+[Overview](#overview) &nbsp;?&nbsp; [Quick start](#quick-start) &nbsp;?&nbsp; [Deployment](docs/DEPLOYMENT.md) &nbsp;?&nbsp; [Research](docs/RESEARCH.md)
+
+</div>
+
+---
+
+## Overview
+
+RAGShield connects a document question-answering workflow with an experimental environment for studying RAG availability attacks. Users can explore evidence behind an answer, then investigate how an injected document changes retrieval and model behavior.
+
+| Mode | Capabilities |
+| --- | --- |
+| **Document Q&A** | Upload PDFs, ask follow-up questions, filter the document library, and inspect answers with page-level citations. |
+| **Security Research** | Compare clean and poisoned responses, inspect blocker retrieval, measure answer jamming, and export experiment results. |
+
+The hosted application uses **Ollama Cloud for chat** and **OpenAI embeddings for semantic search**. Inference runs through cloud APIs, independently of the developer's computer.
+
+## Key features
+
+- **Evidence-backed answers** ? document and page references with expandable source passages.
+- **Grounding checks** ? relevance filtering and lexical checks to flag unsupported responses.
+- **Document management** ? content-based duplicate detection, search filters and indexed-document deletion.
+- **Controlled experiments** ? isolated research collections with blocker cleanup after each run.
+- **Transparent evaluation** ? separate reporting for retrieval success and answer jamming.
+- **Deployment support** ? Render Blueprint, process supervision, environment-based configuration and automated CI.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    UI[Streamlit UI] --> API[FastAPI]
+    API --> PDF[PDF ingestion]
+    PDF --> EMB[Hosted embedding API]
+    EMB --> DB[(ChromaDB)]
+    API --> RET[Semantic retrieval]
+    DB --> RET
+    RET --> LLM[Ollama Cloud]
+    LLM --> CHECK[Grounding and citations]
+    CHECK --> UI
+```
+
+The research module uses a separate experimental collection to compare the clean pipeline with a poisoned version. Shared model adapters support Ollama Cloud and OpenAI-compatible APIs.
+
+**Stack:** Python ? FastAPI ? Streamlit ? LangChain ? ChromaDB ? PyPDF ? Ollama Cloud ? OpenAI API
+
+## Quick start
+
+**Requirements:** Python 3.12, an Ollama Cloud API key and an OpenAI API key.
 
 ```bash
+git clone https://github.com/Daredevil1915/RAGShield.git
+cd RAGShield
 python -m venv .venv
-# Windows: .venv\Scripts\activate
-# macOS/Linux: source .venv/bin/activate
+```
+
+Activate the environment with `.venv\Scripts\activate` on Windows or `source .venv/bin/activate` on macOS/Linux, then:
+
+```bash
 pip install -r requirements-app.txt
 cp .env.example .env
-# Fill in OLLAMA_API_KEY and OPENAI_API_KEY in .env before running.
+```
+
+Set `OLLAMA_API_KEY` and `OPENAI_API_KEY` in `.env`, then start the application:
+
+```bash
 python scripts/start_render.py
 ```
 
-Open http://localhost:10000. The launcher starts the API on loopback port 8000 and stops both processes if either fails.
-On Render these processes run on Render's servers; closing or switching off your computer does not stop them.
-Document text and questions are sent to the configured cloud providers for inference.
+Open **http://localhost:10000**. Upload a text-based PDF to begin, or switch to Security Research and prepare the demo corpus.
 
-For a single cloud provider/key, use `MODEL_PROVIDER=openai` with `OPENAI_API_KEY` for both chat and embeddings.
-`OPENAI_BASE_URL`, `OPENAI_CHAT_MODEL` and `OPENAI_EMBED_MODEL` also support compatible hosted APIs.
-If the chat provider does not serve embeddings, configure `OPENAI_EMBED_BASE_URL` and `OPENAI_EMBED_API_KEY`
-for a separate embedding service. Compatible APIs must return OpenAI-style chat and float embedding responses.
+For hosted setup, follow the **[Render deployment guide](docs/DEPLOYMENT.md#deploy-on-render)**. Provider alternatives, environment settings and storage configuration are documented there.
 
-## Deploy on Render
+## Research context
 
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/Daredevil1915/RAGShield)
+The project studies **availability attacks on RAG systems** using black-box blocker optimization and adversarial suffix methods. Its central distinction is that **a retrieved blocker does not necessarily jam an answer**.
 
-1. Create a Render **Blueprint** from this repository; it reads `render.yaml`.
-2. Set `OLLAMA_API_KEY` (from [Ollama account keys](https://ollama.com/settings/keys)) and `OPENAI_API_KEY`
-   (for hosted embeddings) as Render environment secrets. The Blueprint sets `MODEL_PROVIDER=ollama_cloud`,
-   `EMBEDDING_PROVIDER=openai` and the default models. No local Ollama server or tunnel is used.
-3. Deploy and open the service URL. Read the generated `DEMO_PASSWORD` in Render's environment settings to sign in, or replace it with your own password there.
-4. Check that the sidebar reports **Cloud APIs configured**, upload a PDF, ask a question, and inspect its page citation.
-   This first request verifies provider authentication and model access. In Security Research select **Prepare demo corpus**,
-   then **Build experimental collection** before running a clean/poisoned comparison.
+The hosted research demo contains 64 MS-MARCO passages. It demonstrates the experimental workflow; it does not reproduce the original 50,024-passage benchmark. Grounding checks are heuristic and do not guarantee factual correctness or prompt-injection resistance.
 
-The UI binds to Render's `$PORT`; the document API stays on loopback. Render checks `/_stcore/health` for process health.
-The API `/health` checks cloud configuration without making paid inference calls; `configured` does not certify credentials,
-quota or live model access. Failed provider requests show an actionable error without exposing keys or raw provider responses.
+See **[Research methodology and evaluation](docs/RESEARCH.md)** for experimental definitions, corpus scope and reproduction requirements.
 
-The Blueprint uses a free service for demonstrations. Uploaded indexes and experiment output disappear on restart, redeploy or idle spin-down. For persistent data, use a paid service with a disk mounted at `/opt/render/project/src/data`, keeping `APP_DB_DIR` under that path. See [Render free service limits](https://render.com/docs/free) and the [Blueprint reference](https://render.com/docs/blueprint-spec). Model hosting is separate and may have its own cost.
-
-Signed-in visitors share one document library and experiment store. This is a single-user portfolio demo, not a multi-tenant service. Run one research experiment at a time.
-
-## Research setup
-
-Set `APP_RESEARCH_DEMO=1` for the shipped demonstration: 24 gold passages from the project's MS-MARCO subset and 40 distractors. This does **not** reproduce the 50,024-passage benchmark or its metrics. The Render Blueprint enables this mode; the sample is embedded only when you select Prepare demo corpus.
-
-Cloud models and embedding endpoints get separate vector collections and demo database paths, so their vectors do not mix with
-the original Ollama index or with a different cloud embedding model. Re-upload PDFs and prepare the demo corpus again after
-changing the embedding model/provider. Retrieval thresholds also need recalibration when switching embedding models.
-
-For the original benchmark use optional local mode (`MODEL_PROVIDER=ollama`, `EMBEDDING_PROVIDER=ollama`), leave
-`APP_RESEARCH_DEMO` unset and supply your existing `db/chroma_db_msmarco` collection (`my_collection`). This optional mode
-needs Ollama with `mistral` and `nomic-embed-text`; `docker compose up --build` starts that stack. It is not used by Render.
-Databases, the full corpus, private reports and generated output are excluded. The small prebuilt control blocker fixture is included
-because the app and tests use it. Cloud demo results are not a reproduction of the original Mistral/nomic benchmark.
-
-Fresh BBO generation uses the installed dependencies. Fresh gradient suffix generation additionally needs `torch`, `transformers` and `einops`, plus sufficient memory; use a capable local machine. Prebuilt blockers work without that stack. Changing models, corpus size or retrieval configuration changes experiment results.
-
-## Verify
+## Testing
 
 ```bash
 python -m pytest
-# Configured cloud or optional local models:
-python -m evaluation.run_eval --pdf path/to/usenixsecurity25-shafran.pdf
 ```
 
-Tests use deterministic fake models; PDF parsing, chunking, ChromaDB, API and UI run for real. They do not certify hosted model quality. GitHub Actions runs the tests on Linux/Python 3.12.
+The suite covers PDF processing, vector retrieval, API and UI flows, cloud adapters, provider failures and research cleanup. Tests use deterministic model substitutes and run in GitHub Actions on Linux with Python 3.12.
 
-## Source layout
+## Project structure
 
 ```text
-app/                     API, ingestion, retrieval, grounding, research orchestration
-ui/                      Streamlit document and research views
-scripts/start_render.py  API/UI process supervisor
-suffix_attack/           Suffix research and jamming evaluation
-bbo_attack.py            Black-box blocker generation
-rag_utils.py             Shared Ollama and text processing helpers
-examples/                Small demonstration corpus
-evaluation/              Golden questions and evaluation runner
-tests/                   Offline API, UI, document, RAG and research tests
-render.yaml              Render deployment Blueprint
-Dockerfile               App container
-docker-compose.yml       Local Ollama, API and UI stack
+app/                 API, ingestion, retrieval and cloud model adapters
+ui/                  Document Q&A and research interfaces
+suffix_attack/       Adversarial suffix generation and jamming evaluation
+examples/            Demonstration corpus
+scripts/             Application startup and process supervision
+evaluation/          Golden questions and evaluation runner
+tests/               Automated tests
+docs/                Deployment and research documentation
+bbo_attack.py        Black-box blocker optimization
+rag_utils.py         Shared model and text-processing utilities
+render.yaml          Render service configuration
 ```
-
-Do not commit credentials, uploaded PDFs or generated databases.
