@@ -23,6 +23,7 @@ COPY scripts ./scripts
 COPY examples ./examples
 COPY app ./app
 COPY ui ./ui
+COPY .streamlit/config.toml ./.streamlit/config.toml
 COPY tests ./tests
 COPY evaluation ./evaluation
 COPY pytest.ini ./

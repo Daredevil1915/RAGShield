@@ -28,5 +28,3 @@ services:
         sync: false
       - key: OPENAI_EMBED_MODEL
         value: text-embedding-3-small
-      - key: DEMO_PASSWORD
-        generateValue: true

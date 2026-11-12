@@ -3,6 +3,9 @@
 *
 !rag_utils.py
 !requirements-app.txt
+!.streamlit/
+!.streamlit/config.toml
+.streamlit/secrets.toml
 !scripts/
 !examples/
 !suffix_attack/

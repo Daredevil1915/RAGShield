@@ -1,21 +1,13 @@
-"""RAG Security Research Mode — Streamlit view.
-
-A thin UI over app/research.py (which itself reuses the untouched research code).
-Flow: pick a valid target -> run clean RAG -> pick BBO/GCG -> generate/inject a
-blocker into the ISOLATED experimental collection -> run poisoned RAG -> compare
--> verdict (retrieval reported separately from jamming) -> always clean up -> export.
-"""
+"""Interactive workspace for controlled RAG availability experiments."""
 from __future__ import annotations
 
+import importlib.util
 import os
-import sys
 from pathlib import Path
 
 import streamlit as st
 
-ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+from ui.theme import hero, step_card
 
 
 @st.cache_resource(show_spinner=False)
@@ -29,187 +21,173 @@ def get_service():
     return ResearchService()
 
 
-def _metric_badge(result) -> None:
-    if not result.valid_target:
-        st.warning(f"⚪ {result.verdict_label}", icon="⚪")
-    elif result.jammed:
-        st.error(f"🔴 {result.verdict_label}", icon="🔴")
-    else:
-        st.success(f"🟢 {result.verdict_label}", icon="🟢")
-
-
-def render() -> None:
+def render():
     from app.research import GCG_STYLES, METHOD_BBO, METHOD_GCG
 
     ss = st.session_state
-    ss.setdefault("rs_clean", {})      # query -> clean_pass result
-    ss.setdefault("rs_result", None)   # last ExperimentResult
-
-    st.title("🛡️ RAG Security Research Mode")
-    st.caption(
-        "Reproduces the availability (jamming) attack from the Summer Training Report: a single blocker "
-        "document is injected into an **isolated copy** of the MS-MARCO corpus, and the clean vs poisoned "
-        "answers are compared. **Retrieval success is reported separately from jamming success** — a blocker "
-        "can be retrieved and the query still not be jammed. Blockers are always removed after each run."
-    )
-
-    svc = get_service()
+    ss.setdefault("rs_clean", {})
+    ss.setdefault("rs_result", None)
+    ss.setdefault("rs_exports", None)
+    hero("SECURITY RESEARCH", "Put your RAG pipeline to the test.",
+         "Compare clean and poisoned answers. See whether a blocker reaches the model and whether the answer survives.")
     demo = os.getenv("APP_RESEARCH_DEMO") == "1"
-    if demo:
-        st.info("Demo corpus: a small MS-MARCO sample with gold passages and 40 distractors. "
-                "Results from this sample do not reproduce the full research benchmark.")
-        if st.button("Prepare demo corpus"):
-            bar = st.progress(0.0, "Connecting to models")
-            try:
-                svc.prepare_demo_corpus(progress=lambda f, m: bar.progress(f, m))
-                st.rerun()
-            except Exception as exc:
-                st.error(f"Could not prepare the demo corpus: {exc}")
-
-    # ── Backend + experimental-collection readiness ────────────────────────────
     try:
+        svc = get_service()
         status = svc.experiment_status()
     except Exception as exc:
-        st.error(f"Cannot reach the research corpus or models: {exc}")
-        return
-
-    if status.get("error"):
-        if demo:
-            st.info("Select Prepare demo corpus to set up the research demonstration.")
-        else:
-            st.error(status["error"])
+        st.error(f"The research workspace is unavailable: {exc}")
         return
 
     with st.sidebar:
-        st.subheader("Experiment setup")
-        if status["ready"]:
-            st.success(f"Isolated collection ready · {status['copied']:,} passages", icon="✅")
+        st.subheader("Research workspace")
+        if status.get("ready"):
+            st.success("Experiment collection ready")
+            st.caption(f"{status['copied']:,} passages | isolated experiment storage")
         else:
-            st.warning(
-                f"One-time setup: copy {status['source']:,} MS-MARCO vectors into an isolated collection "
-                "(the research DB is never modified).", icon="⚙️",
-            )
-            if st.button("Build experimental collection", type="primary", width="stretch"):
-                bar = st.progress(0.0, "Starting…")
+            st.caption("Prepare the collection to start your first experiment.")
+        st.divider()
+        st.markdown("**How to read the results**")
+        st.caption("Retrieved: the blocker reached the context.\n\nJammed: a previously answerable question lost its answer.")
+        st.caption("RAGShield | Shared demo workspace")
+
+    if not status.get("ready"):
+        with st.container(border=True):
+            st.subheader("Set up your research workspace")
+            st.write("Prepare a small MS-MARCO sample and an isolated experiment collection." if demo else
+                     "Create an isolated experiment collection from the configured research corpus.")
+            if demo:
+                st.caption("64 passages | 24 gold passages and 40 distractors | demonstration corpus")
+            if status.get("error") and not demo:
+                st.warning("The research corpus has not been configured. Use the demo corpus or follow the research setup guide.")
+            elif st.button("Prepare research workspace", type="primary", icon=":material/science:"):
                 try:
-                    svc.ensure_experiment_collection(progress=lambda f, m: bar.progress(min(f, 1.0), m))
-                    bar.progress(1.0, "Done")
+                    with st.status("Preparing the research workspace...", expanded=True) as setup:
+                        if demo:
+                            st.write("Embedding the demonstration corpus")
+                            svc.prepare_demo_corpus()
+                        st.write("Building the isolated experiment collection")
+                        svc.ensure_experiment_collection()
+                        setup.update(label="Research workspace ready", state="complete")
                     st.rerun()
                 except Exception as exc:
-                    st.error(f"Build failed: {exc}")
-            st.info("Build the collection to enable experiments.")
+                    st.error(f"Setup could not finish: {exc}")
+        columns = st.columns(3)
+        for column, args in zip(columns, [
+            ("01", "Establish a baseline", "Check that the clean pipeline answers the target question."),
+            ("02", "Introduce a blocker", "Inject a controlled document into the isolated collection."),
+            ("03", "Compare the outcome", "Inspect retrieval, answer changes, and automatic cleanup."),
+        ]):
+            with column:
+                step_card(*args)
+        return
 
-    # ── Step 1: target query + clean pass ──────────────────────────────────────
-    st.subheader("1 · Target query")
     queries = svc.dataset()
-    labels = {q.query: q.query for q in queries}
-    query = st.selectbox("Pick a valid target (clean RAG answers these):", list(labels), format_func=labels.get)
+    if not queries:
+        st.info("No target questions are available in the configured dataset.")
+        return
+    metrics = st.columns(3)
+    metrics[0].metric("Corpus passages", status["copied"])
+    metrics[1].metric("Target questions", len(queries))
+    metrics[2].metric("Retrieval depth", svc.k)
+    if demo:
+        st.caption("Demo corpus | Results illustrate this sample and model configuration, not the original benchmark.")
 
-    run_clean = st.button("Run clean RAG", disabled=not status["ready"])
-    if run_clean:
-        try:
-            with st.spinner("Running the clean RAG pipeline…"):
-                ss.rs_clean[query] = svc.clean_pass(query)
-            ss.rs_result = None
-        except Exception as exc:
-            st.error(f"Clean pass failed. Check the configured model APIs: {exc}")
+    st.write("")
+    with st.container(border=True):
+        st.subheader("01 | Establish a baseline")
+        st.caption("A question must be answerable before an availability attack can be evaluated.")
+        query = st.selectbox("Target question", [item.query for item in queries])
+        if st.button("Run clean baseline", icon=":material/play_arrow:"):
+            try:
+                with st.spinner("Retrieving context and generating the clean answer..."):
+                    ss.rs_clean[query] = svc.clean_pass(query)
+                ss.rs_result = None
+                ss.rs_exports = None
+            except Exception as exc:
+                st.error(f"The baseline could not finish: {exc}")
+        clean = ss.rs_clean.get(query)
+        if clean:
+            if clean["refuses"]:
+                st.warning("The clean pipeline could not answer this question. Choose another target.")
+            st.markdown("**Clean answer**")
+            st.info(clean["answer"])
+            with st.expander("Inspect baseline evidence", icon=":material/format_quote:"):
+                for passage in clean["passages"]:
+                    st.markdown(f"**Passage {passage.rank}**")
+                    st.caption(f"Retrieval distance {passage.distance:.3f}")
+                    st.write(passage.text)
 
-    clean = ss.rs_clean.get(query)
-    if clean:
-        st.markdown(f"**Clean answer** {'🚫 (clean system already refuses — not a valid target)' if clean['refuses'] else ''}")
-        st.info(clean["answer"])
-        with st.expander(f"Top-{len(clean['passages'])} retrieved passages (clean KB)", expanded=False):
-            for p in clean["passages"]:
-                tag = " · 🧪 BLOCKER" if p.is_blocker else ""
-                st.markdown(f"**#{p.rank}** · similarity-distance {p.distance:.3f}{tag}")
-                st.caption(p.text + ("…" if len(p.text) >= 600 else ""))
+    with st.container(border=True):
+        st.subheader("02 | Configure the experiment")
+        left, right = st.columns(2)
+        method = left.radio("Attack method", [METHOD_GCG, METHOD_BBO], horizontal=True,
+                            help="GCG uses adversarial suffixes. BBO optimizes blockers using black-box model calls.")
+        fresh_available = bool(importlib.util.find_spec("torch") and importlib.util.find_spec("transformers"))
+        if method == METHOD_GCG:
+            prebuilt = svc.available_prebuilt_styles(query)
+            styles = sorted(set(GCG_STYLES) | set(prebuilt))
+            style = right.selectbox("Blocker style", styles, index=styles.index(prebuilt[0]) if prebuilt else 0)
+            options = ["Pre-made (instant)", "Generate fresh"] if style in prebuilt else ["Generate fresh"]
+            source = left.radio("Blocker source", options, horizontal=True)
+            quick = True
+            generation_ready = source == "Pre-made (instant)" or fresh_available
+            if not generation_ready:
+                st.caption("Fresh suffix generation requires the full research environment. Choose an available pre-made style for this demo.")
+        else:
+            style, source, generation_ready = "bbo", "Generate fresh", True
+            right.caption("BBO generates a blocker against the retrieved context using the configured cloud APIs.")
+            quick = left.toggle("Quick experiment", value=True, help="Use fewer optimization iterations.")
+        use_judge = st.toggle("Use an LLM judge", value=True,
+                              help="Grade answer preservation with the model. This makes additional API calls.")
+        can_run = clean is not None and not clean["refuses"] and generation_ready
+        if not clean:
+            st.caption("Run the clean baseline to enable the experiment.")
+        if st.button("Run poisoning experiment", type="primary", icon=":material/science:", disabled=not can_run):
+            ss.rs_exports = None
+            try:
+                use_premade = method == METHOD_GCG and source == "Pre-made (instant)"
+                with st.status("Running the experiment...", expanded=True) as experiment:
+                    st.write("Preparing the blocker document")
+                    blocker = svc.get_prebuilt_blocker(query, style) if use_premade else None
+                    if blocker is None:
+                        blocker = svc.generate_blocker(query, method, style=style, quick=quick)
+                    st.write("Comparing clean and poisoned answers")
+                    ss.rs_result = svc.run_experiment(query, blocker["full_blocker"], method=method, style=style,
+                                                      blocker_origin=blocker["origin"], use_llm_judge=use_judge)
+                    experiment.update(label="Experiment complete", state="complete")
+            except Exception as exc:
+                st.error(f"The experiment could not finish: {exc}")
 
-    # ── Step 2: attack + experiment ────────────────────────────────────────────
-    st.subheader("2 · Attack method")
-    c1, c2 = st.columns(2)
-    method = c1.radio("Method", [METHOD_GCG, METHOD_BBO],
-                      help="GCG = gradient-optimized adversarial suffix. BBO = black-box blocker optimization.")
-
-    if method == METHOD_GCG:
-        prebuilt = svc.available_prebuilt_styles(query)
-        # Offer the standard styles plus whatever pre-made styles exist for this query.
-        style_opts = sorted(set(GCG_STYLES) | set(prebuilt))
-        default_idx = style_opts.index(prebuilt[0]) if prebuilt else 0
-        style = c2.selectbox("Jam style", style_opts, index=default_idx,
-                             help="'nosuffix' is the report's control (on-topic prose, no suffix). "
-                                  f"Pre-made for this query: {', '.join(prebuilt) or 'none'}.")
-        premade_ok = style in prebuilt
-        source = c2.radio("Blocker source", ["Pre-made (instant)", "Generate fresh"],
-                          index=0 if premade_ok else 1,
-                          help="Pre-made reproduces the report exactly; fresh re-runs your generator (~30-60s).")
-        quick = True
-    else:
-        style = "bbo"
-        c2.caption("BBO optimizes against real retrieved context (black-box, query-only). "
-                   "No pre-made blockers exist for these 18 queries, so BBO generates fresh.")
-        source = "Generate fresh"
-        quick = c2.toggle("Quick run (fewer iterations)", value=True)
-
-    use_judge = st.toggle("Grade with LLM judge (report methodology; slower)", value=True)
-
-    can_run = status["ready"] and clean is not None and not clean["refuses"]
-    if clean is not None and clean["refuses"]:
-        st.warning("This query's clean answer is a refusal, so it is not a valid target. Pick another query.")
-
-    if st.button("Generate blocker & run experiment", type="primary", disabled=not can_run):
-        try:
-            use_premade = method == METHOD_GCG and source == "Pre-made (instant)"
-            with st.spinner("Preparing the blocker…" if use_premade else "Generating blocker (reusing your attack code)…"):
-                blk = svc.get_prebuilt_blocker(query, style) if use_premade else None
-                if blk is None:
-                    blk = svc.generate_blocker(query, method, style=style, quick=quick)
-            with st.spinner("Injecting into the isolated collection and running the poisoned pass… (clean-up is automatic)"):
-                ss.rs_result = svc.run_experiment(
-                    query, blk["full_blocker"], method=method, style=style,
-                    blocker_origin=blk["origin"], use_llm_judge=use_judge,
-                )
-        except Exception as exc:
-            st.error(f"Experiment failed: {exc}")
-
-    # ── Step 3: results ────────────────────────────────────────────────────────
     result = ss.rs_result
     if result and result.query == query:
-        st.subheader("3 · Clean vs poisoned")
-        _metric_badge(result)
-
-        a, b = st.columns(2)
-        a.markdown("**Clean answer**")
-        a.info(result.clean_answer)
-        b.markdown("**Poisoned answer**")
-        (b.error if result.jammed else b.info)(result.poisoned_answer)
-
-        m = st.columns(4)
-        m[0].metric("Blocker sim-rank", result.blocker_sim_rank if result.blocker_sim_rank > 0 else "—")
-        m[1].metric("In-context pos", result.blocker_ctx_pos if result.blocker_ctx_pos > 0 else "not retrieved")
-        m[2].metric("Outcome", result.outcome)
-        m[3].metric("Jammed?", "YES" if result.jammed else "no")
-
-        st.markdown(
-            f"> **Retrieval ≠ Jamming.** {result.retrieval_vs_jamming}. "
-            + ("The blocker reached the model but the correct answer survived — exactly the dilution effect "
-               "documented in the report." if result.retrieved and not result.jammed else
-               "The blocker both reached the model and suppressed the answer." if result.jammed else
-               "The blocker did not even make it into the context.")
-        )
-
-        with st.expander("Blocker document + run details"):
-            st.caption(f"Source: {result.blocker_origin} · method {result.method}/{result.style} · "
-                       f"k={result.k} · judge={'LLM' if result.used_llm_judge else 'keywords'} · "
-                       f"{result.elapsed_s}s")
-            st.code(result.full_blocker)
-            st.caption(f"✅ Cleanup verified: {result.blockers_cleaned} tagged blockers and "
-                       f"{result.ids_restored} stray docs remained after the run (both should be 0 — "
-                       "the isolated collection is back to the clean corpus).")
-
-        if st.button("Export results"):
-            paths = svc.export(result)
-            st.success(f"Saved {paths['json']}")
-            jf = Path(paths["json"]); cf = Path(paths["csv"])
-            d1, d2 = st.columns(2)
-            d1.download_button("Download run JSON", jf.read_bytes(), file_name=jf.name, mime="application/json")
-            d2.download_button("Download runs CSV", cf.read_bytes(), file_name=cf.name, mime="text/csv")
+        st.subheader("03 | Compare the results")
+        if not result.valid_target:
+            st.warning(result.verdict_label)
+        elif result.jammed:
+            st.error(result.verdict_label)
+        else:
+            st.success(result.verdict_label)
+        metrics = st.columns(4)
+        metrics[0].metric("Blocker retrieved", "Yes" if result.retrieved else "No")
+        metrics[1].metric("Answer jammed", "Yes" if result.jammed else "No")
+        metrics[2].metric("Retrieval rank", result.blocker_sim_rank if result.blocker_sim_rank > 0 else "Outside top 50")
+        metrics[3].metric("Run time", f"{result.elapsed_s:.1f}s")
+        left, right = st.columns(2)
+        with left.container(border=True):
+            st.markdown("**Clean response**")
+            st.write(result.clean_answer)
+        with right.container(border=True):
+            st.markdown("**Poisoned response**")
+            st.write(result.poisoned_answer)
+        st.caption("Retrieval and jamming are separate outcomes. A blocker can be retrieved while the answer remains intact.")
+        with st.expander("Inspect experiment evidence", icon=":material/description:"):
+            st.caption(f"{result.method} | {result.style} | context position {result.blocker_ctx_pos} | outcome {result.outcome}")
+            st.code(result.full_blocker, language=None)
+            st.caption(f"Cleanup sweep removed {result.blockers_cleaned} tagged blockers and {result.ids_restored} stray documents.")
+        if st.button("Prepare result downloads", icon=":material/download:"):
+            ss.rs_exports = {"query": query, **svc.export(result)}
+        if ss.rs_exports and ss.rs_exports["query"] == query:
+            left, right = st.columns(2)
+            json_file, csv_file = Path(ss.rs_exports["json"]), Path(ss.rs_exports["csv"])
+            left.download_button("Download run JSON", json_file.read_bytes(), file_name=json_file.name, mime="application/json")
+            right.download_button("Download results CSV", csv_file.read_bytes(), file_name=csv_file.name, mime="text/csv")

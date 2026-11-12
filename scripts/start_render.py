@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def main() -> int:
     load_dotenv(ROOT / ".env")
-    # Keep the document API on loopback; the password-protected UI calls it.
+    # Keep the document API on loopback; the public UI calls it server-side.
     env = os.environ.copy()
     env["API_URL"] = "http://127.0.0.1:8000"
     children: list[subprocess.Popen] = []

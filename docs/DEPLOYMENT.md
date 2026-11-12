@@ -48,10 +48,10 @@ for a separate embedding service. Compatible APIs must return OpenAI-style chat 
 2. Set `OLLAMA_API_KEY` (from [Ollama account keys](https://ollama.com/settings/keys)) and `OPENAI_API_KEY`
    (for hosted embeddings) as Render environment secrets. The Blueprint sets `MODEL_PROVIDER=ollama_cloud`,
    `EMBEDDING_PROVIDER=openai` and the default models. No local Ollama server or tunnel is used.
-3. Deploy and open the service URL. Read the generated `DEMO_PASSWORD` in Render's environment settings to sign in, or replace it with your own password there.
-4. Check that the sidebar reports **Cloud APIs configured**, upload a PDF, ask a question, and inspect its page citation.
-   This first request verifies provider authentication and model access. In Security Research select **Prepare demo corpus**,
-   then **Build experimental collection** before running a clean/poisoned comparison.
+3. Deploy and open the service URL. The app opens directly to the document workspace without a login screen.
+4. Open **Service status** in the sidebar to check that the cloud APIs are configured, then upload a PDF,
+   ask a question, and select **Explore the evidence** to inspect its source passages.
+   In Security Research select **Prepare research workspace**, then **Run clean baseline** before running an experiment.
 
 The UI binds to Render's `$PORT`; the document API stays on loopback. Render checks `/_stcore/health` for process health.
 The API `/health` checks cloud configuration without making paid inference calls; `configured` does not certify credentials,
@@ -59,4 +59,4 @@ quota or live model access. Failed provider requests show an actionable error wi
 
 The Blueprint uses a free service for demonstrations. Uploaded indexes and experiment output disappear on restart, redeploy or idle spin-down. For persistent data, use a paid service with a disk mounted at `/opt/render/project/src/data`, keeping `APP_DB_DIR` under that path. See [Render free service limits](https://render.com/docs/free) and the [Blueprint reference](https://render.com/docs/blueprint-spec). Model hosting is separate and may have its own cost.
 
-Signed-in visitors share one document library and experiment store. This is a single-user portfolio demo, not a multi-tenant service. Run one research experiment at a time.
+Visitors share one document library and experiment store. Run one research experiment at a time.

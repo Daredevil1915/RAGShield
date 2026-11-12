@@ -21,7 +21,7 @@ Retrieval success alone is not evidence of jamming. Experiments run against a se
 | Hosted demonstration | 24 gold passages and 40 distractors | Interactive workflow demonstration |
 | Original research setup | 50,024 passages with the original model configuration | Benchmark reproduction with separately supplied research data |
 
-Set `APP_RESEARCH_DEMO=1` for the shipped demonstration: 24 gold passages from the project's MS-MARCO subset and 40 distractors. This does **not** reproduce the 50,024-passage benchmark or its metrics. The Render Blueprint enables this mode; the sample is embedded only when you select Prepare demo corpus.
+Set `APP_RESEARCH_DEMO=1` for the shipped demonstration: 24 gold passages from the project's MS-MARCO subset and 40 distractors. This does **not** reproduce the 50,024-passage benchmark or its metrics. The Render Blueprint enables this mode; the sample is embedded when you select **Prepare research workspace**.
 
 Cloud models and embedding endpoints get separate vector collections and demo database paths, so their vectors do not mix with
 the original Ollama index or with a different cloud embedding model. Re-upload PDFs and prepare the demo corpus again after
