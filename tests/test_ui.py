@@ -72,4 +72,24 @@ def test_ui_password_gate(ui, monkeypatch):
     ui.text_input[0].input("test-pass")
     ui.button[0].click().run()
     assert ui.title[0].value == "Ask your PDFs"
+
+
+def test_ui_cloud_configuration_status(ui, monkeypatch):
+    monkeypatch.setenv("MODEL_PROVIDER", "ollama_cloud")
+    monkeypatch.setenv("EMBEDDING_PROVIDER", "openai")
+    monkeypatch.setenv("OLLAMA_API_KEY", "test-chat-key")
+    monkeypatch.setenv("OPENAI_API_KEY", "test-embedding-key")
+    ui.run()
+    assert not ui.exception
+    assert any("Cloud APIs configured" in m.value for m in ui.sidebar.info)
+    assert not ui.sidebar.warning
+
+
+def test_ui_cloud_missing_key_shows_setup_error(ui, monkeypatch):
+    monkeypatch.setenv("MODEL_PROVIDER", "ollama_cloud")
+    monkeypatch.setenv("EMBEDDING_PROVIDER", "openai")
+    monkeypatch.delenv("OLLAMA_API_KEY", raising=False)
+    ui.run()
+    assert not ui.exception
+    assert any("OLLAMA_API_KEY" in m.value for m in ui.sidebar.warning)
     assert ui.chat_input

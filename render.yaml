@@ -1,4 +1,4 @@
-# Set OLLAMA_BASE_URL to a hosted Ollama server, never your laptop's localhost.
+# Fully hosted: Ollama Cloud chat and OpenAI-compatible embedding API.
 services:
   - type: web
     name: ragshield
@@ -16,11 +16,17 @@ services:
         value: /opt/render/project/src/data/app_chroma
       - key: APP_RESEARCH_DEMO
         value: '1'
-      - key: OLLAMA_BASE_URL
+      - key: MODEL_PROVIDER
+        value: ollama_cloud
+      - key: EMBEDDING_PROVIDER
+        value: openai
+      - key: OLLAMA_API_KEY
         sync: false
-      - key: OLLAMA_LLM_MODEL
-        value: mistral
-      - key: OLLAMA_EMBED_MODEL
-        value: nomic-embed-text
+      - key: OLLAMA_CLOUD_MODEL
+        value: gemma4:31b
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_EMBED_MODEL
+        value: text-embedding-3-small
       - key: DEMO_PASSWORD
         generateValue: true

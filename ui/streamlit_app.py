@@ -100,6 +100,11 @@ with st.sidebar:
     health, health_err = get_health()
     if health_err:
         st.error(health_err)
+    elif health["status"] == "configured":
+        st.info(f"Cloud APIs configured · {health.get('documents') or 0} chunks indexed")
+        st.caption("Model access is checked when you upload or ask a question.")
+    elif (health.get("backend") or {}).get("provider") not in (None, "ollama"):
+        st.warning(health["backend"].get("error", "Check cloud API configuration."))
     elif health["status"] == "ok":
         st.success(f"Backend ready · {health.get('documents') or 0} chunks indexed", icon="✅")
     else:

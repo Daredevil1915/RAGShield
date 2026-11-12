@@ -7,10 +7,10 @@ Layout (one responsibility per module):
     documents.py     PDF validation, text extraction, page-aware chunking
     vector_store.py  ChromaDB wrapper (add / list / delete / search)
     rag.py           the RAG pipeline: rewrite -> retrieve -> gate -> generate -> cite
-    services.py      wires real Ollama models into the pipeline (used by the API)
+    services.py      wires configured models into the pipeline (used by the API)
+    model_backend.py hosted chat and embedding API adapters
     api.py           FastAPI HTTP endpoints
     schemas.py       request / response models for the API
 
-The research code (main.py, rag_utils.py, suffix_attack/, ...) is untouched;
-this package imports rag_utils.py instead of copying it.
+The app and research share the model factories in rag_utils.py.
 """

@@ -160,6 +160,12 @@ class ResearchService:
         k: int = 5,
         export_dir: str = "evaluation/research_runs",
     ):
+        from .model_backend import embedding_namespace, get_embedding_provider
+        if get_embedding_provider() != "ollama":
+            if source_db == "db/chroma_db_msmarco":
+                source_db += "_" + embedding_namespace()
+            if exp_db == "data/research_chroma":
+                exp_db += "_" + embedding_namespace()
         self.root = Path(root)
         self.source_db = str(self.root / source_db)
         self.source_collection = source_collection

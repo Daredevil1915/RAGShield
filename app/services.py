@@ -17,6 +17,7 @@ from rag_utils import create_embeddings, create_llm, get_embed_model, get_llm_mo
 from .config import Settings, get_settings
 from .documents import chunk_document, parse_pdf
 from .embeddings import NomicPrefixedEmbeddings
+from .model_backend import embedding_namespace, get_embedding_provider
 from .rag import RAGPipeline
 from .vector_store import VectorStore
 
@@ -24,7 +25,7 @@ log = logging.getLogger("app")
 
 
 class ServiceUnavailable(RuntimeError):
-    """Ollama is down or a model is missing. The API turns this into HTTP 503."""
+    """A model backend is down or misconfigured. The API returns HTTP 503."""
 
 
 @dataclass
@@ -41,12 +42,17 @@ _lock = threading.Lock()
 def build_services(settings: Optional[Settings] = None) -> Services:
     settings = settings or get_settings()
     try:
-        # rag_utils factories: same Ollama config (threads, context, keep-alive) as the research code.
-        embeddings = NomicPrefixedEmbeddings(create_embeddings())
+        # Shared factories route both app and research to the selected provider.
+        embeddings = create_embeddings()
+        if get_embedding_provider() == "ollama":
+            embeddings = NomicPrefixedEmbeddings(embeddings)
         llm = create_llm()
     except RuntimeError as exc:  # rag_utils.ensure_ollama_server raises this
         raise ServiceUnavailable(str(exc).strip()) from exc
-    store = VectorStore(embeddings, settings.db_dir, settings.collection)
+    collection = settings.collection
+    if get_embedding_provider() != "ollama":
+        collection += "_" + embedding_namespace()
+    store = VectorStore(embeddings, settings.db_dir, collection)
     return Services(settings=settings, store=store, pipeline=RAGPipeline(store, llm, settings))
 
 

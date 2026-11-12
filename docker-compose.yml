@@ -46,6 +46,8 @@ services:
   api:
     build: .
     environment:
+      MODEL_PROVIDER: ollama
+      EMBEDDING_PROVIDER: ollama
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
       OLLAMA_LLM_MODEL: ${OLLAMA_LLM_MODEL:-mistral}
       OLLAMA_EMBED_MODEL: ${OLLAMA_EMBED_MODEL:-nomic-embed-text}
@@ -70,6 +72,9 @@ services:
     build: .
     command: ["streamlit", "run", "ui/streamlit_app.py", "--server.address=0.0.0.0", "--server.port=8501", "--browser.gatherUsageStats=false"]
     environment:
+      MODEL_PROVIDER: ollama
+      EMBEDDING_PROVIDER: ollama
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
       API_URL: http://api:8000
     ports:
       - "8501:8501"

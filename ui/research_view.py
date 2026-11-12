@@ -22,7 +22,10 @@ if str(ROOT) not in sys.path:
 def get_service():
     from app.research import ResearchService
     if os.getenv("APP_RESEARCH_DEMO") == "1":
-        return ResearchService(source_db="data/demo_research_source", source_collection="demo_corpus")
+        from app.model_backend import embedding_namespace
+        namespace = embedding_namespace()
+        return ResearchService(source_db=f"data/demo_research_source_{namespace}", source_collection="demo_corpus",
+                               exp_db=f"data/research_chroma_{namespace}")
     return ResearchService()
 
 
@@ -109,7 +112,7 @@ def render() -> None:
                 ss.rs_clean[query] = svc.clean_pass(query)
             ss.rs_result = None
         except Exception as exc:
-            st.error(f"Clean pass failed (is Ollama running with mistral + nomic-embed-text?): {exc}")
+            st.error(f"Clean pass failed. Check the configured model APIs: {exc}")
 
     clean = ss.rs_clean.get(query)
     if clean:

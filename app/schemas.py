@@ -68,6 +68,7 @@ class UploadResponse(BaseModel):
 
 
 class HealthResponse(BaseModel):
-    status: Literal["ok", "degraded"]
-    ollama: Dict
+    status: Literal["ok", "configured", "degraded"]
+    ollama: Optional[Dict] = None
+    backend: Optional[Dict] = None
     documents: Optional[int] = None

@@ -17,6 +17,7 @@ import httpx
 from fastapi import Depends, FastAPI, File, HTTPException, Response, UploadFile, status
 
 from .documents import InvalidDocumentError
+from .model_backend import ModelBackendError, cloud_status, get_model_provider
 from .schemas import ChatRequest, ChatResponse, DocumentOut, HealthResponse, UploadResponse
 from .services import ServiceUnavailable, Services, get_services, index_pdf, ollama_status
 
@@ -26,7 +27,7 @@ log = logging.getLogger("app")
 app = FastAPI(
     title="RAGShield API",
     description="Upload PDFs and ask questions about them. Answers cite document and page. "
-    "Retrieval: nomic-embed-text v1.5 + ChromaDB. Generation: Mistral 7B via Ollama.",
+    "Configurable cloud chat and embedding APIs with ChromaDB retrieval.",
     version="1.0.0",
 )
 
@@ -35,7 +36,7 @@ try:
     from ollama import ResponseError as _OllamaResponseError
 except ImportError:  # pragma: no cover
     _OllamaResponseError = RuntimeError
-MODEL_ERRORS = (ServiceUnavailable, ConnectionError, httpx.HTTPError, _OllamaResponseError)
+MODEL_ERRORS = (ServiceUnavailable, ModelBackendError, ConnectionError, httpx.HTTPError, _OllamaResponseError)
 
 
 def services() -> Services:
@@ -62,6 +63,16 @@ def livez():
 
 @app.get("/health", response_model=HealthResponse)
 def health():
+    if get_model_provider() != "ollama":
+        backend = cloud_status()
+        documents = None
+        if backend["configured"]:
+            try:
+                documents = get_services().store.count()
+            except Exception:
+                backend.update(configured=False, error="Could not open the document index.")
+        return HealthResponse(status="configured" if backend["configured"] else "degraded",
+                              backend=backend, documents=documents)
     ollama = ollama_status()
     documents = None
     ok = ollama["reachable"] and all(ollama["models"].values())
@@ -70,7 +81,7 @@ def health():
             documents = get_services().store.count()
         except Exception:
             ok = False
-    return HealthResponse(status="ok" if ok else "degraded", ollama=ollama, documents=documents)
+    return HealthResponse(status="ok" if ok else "degraded", ollama=ollama, backend={"provider": "ollama", **ollama}, documents=documents)
 
 
 @app.post("/documents", response_model=UploadResponse, status_code=status.HTTP_201_CREATED)

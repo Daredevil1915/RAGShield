@@ -27,6 +27,13 @@ from app.embeddings import NomicPrefixedEmbeddings  # noqa: E402
 from app.rag import RAGPipeline  # noqa: E402
 from app.vector_store import VectorStore  # noqa: E402
 
+
+@pytest.fixture(autouse=True)
+def offline_model_defaults(monkeypatch):
+    # Never use developer credentials or the deployment provider in offline tests.
+    monkeypatch.setenv("MODEL_PROVIDER", "ollama")
+    monkeypatch.setenv("EMBEDDING_PROVIDER", "ollama")
+
 STOPWORDS = {
     "the", "a", "an", "is", "are", "was", "were", "of", "to", "in", "on", "and", "or", "what", "who",
     "how", "does", "do", "did", "it", "its", "for", "at", "by", "with", "about", "which", "when",
