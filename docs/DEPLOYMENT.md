@@ -60,3 +60,18 @@ quota or live model access. Failed provider requests show an actionable error wi
 The Blueprint uses a free service for demonstrations. Uploaded indexes and experiment output disappear on restart, redeploy or idle spin-down. For persistent data, use a paid service with a disk mounted at `/opt/render/project/src/data`, keeping `APP_DB_DIR` under that path. See [Render free service limits](https://render.com/docs/free) and the [Blueprint reference](https://render.com/docs/blueprint-spec). Model hosting is separate and may have its own cost.
 
 Visitors share one document library and experiment store. Run one research experiment at a time.
+
+## Embedding API errors during setup
+
+The default configuration uses OpenAI for document embeddings. An HTTP 429 response can indicate either temporary throttling or an account quota restriction.
+
+| Error | Action |
+| --- | --- |
+| Insufficient quota or exhausted credits | Check the embedding provider's API billing, credit balance and project limits. Repeated setup attempts do not restore quota. |
+| Project or organization spending limit | Review the corresponding account limit before retrying. |
+| Temporary rate limit | The app retries identified transient failures up to twice and respects short `Retry-After` delays. Longer delays are shown in the error message. |
+| Unspecified HTTP 429 | Check both quota and rate limits; the status code alone does not identify the cause. |
+
+After resolving provider access, select **Prepare research workspace** again. Completed corpus batches are retained and skipped on retry. The app does not automatically switch embedding models or mix vectors from different providers.
+
+See the [OpenAI error-code reference](https://developers.openai.com/api/docs/guides/error-codes) for account and rate-limit distinctions.

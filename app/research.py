@@ -203,15 +203,18 @@ class ResearchService:
         data = json.loads((self.root / "examples/research_corpus.json").read_text(encoding="utf-8"))
         client = chromadb.PersistentClient(path=self.source_db)
         col = client.get_or_create_collection(self.source_collection)
-        if col.count() == len(data["ids"]):
+        existing = set(col.get(include=[])["ids"])
+        pending = [(doc_id, text) for doc_id, text in zip(data["ids"], data["documents"]) if doc_id not in existing]
+        if not pending:
             return
         embedding = create_embeddings()
-        for start in range(0, len(data["ids"]), 16):
-            docs = data["documents"][start:start + 16]
-            col.upsert(ids=data["ids"][start:start + 16], documents=docs,
+        for start in range(0, len(pending), 16):
+            batch = pending[start:start + 16]
+            ids, docs = [row[0] for row in batch], [row[1] for row in batch]
+            col.upsert(ids=ids, documents=docs,
                        embeddings=embedding.embed_documents(docs))
             if progress:
-                progress(min((start + len(docs)) / len(data["ids"]), 1.0), "Embedding demo passages")
+                progress(min((len(existing) + start + len(docs)) / len(data["ids"]), 1.0), "Embedding demo passages")
 
     def _source_count(self):
         import chromadb

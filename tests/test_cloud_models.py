@@ -157,3 +157,77 @@ def test_invalid_chat_response_is_actionable(cloud, monkeypatch, body):
         200, json=body, request=httpx.Request("POST", url)))
     with pytest.raises(ModelBackendError):
         CloudLLM().invoke("Test")
+
+
+@pytest.mark.parametrize("reason", ["insufficient_quota", "credit_balance_exhausted", "project_spend_limit_exceeded"])
+def test_quota_failures_are_not_retried(cloud, monkeypatch, reason):
+    calls = []
+    def post(url, **kwargs):
+        calls.append(url)
+        return httpx.Response(429, json={"error": {"code": reason, "message": "private billing details"}},
+                              request=httpx.Request("POST", url))
+    monkeypatch.setattr(httpx, "post", post)
+    monkeypatch.setattr("app.model_backend.time.sleep", lambda _: pytest.fail("Quota errors must not be retried"))
+    with pytest.raises(ModelBackendError) as error:
+        CloudEmbeddings().embed_query("test")
+    assert "HTTP 429" in str(error.value)
+    assert "private billing" not in str(error.value)
+    assert len(calls) == 1
+
+
+def test_transient_rate_limit_respects_retry_after_then_recovers(cloud, monkeypatch):
+    original = httpx.post
+    calls, delays = [], []
+    def post(url, **kwargs):
+        calls.append(url)
+        if len(calls) == 1:
+            return httpx.Response(429, json={"error": {"code": "rate_limit_exceeded"}},
+                                  headers={"Retry-After": "2"}, request=httpx.Request("POST", url))
+        return original(url, **kwargs)
+    monkeypatch.setattr(httpx, "post", post)
+    monkeypatch.setattr("app.model_backend.time.sleep", delays.append)
+    assert CloudEmbeddings().embed_query("test")
+    assert delays == [2]
+    assert len(calls) == 2
+
+
+def test_long_retry_after_is_reported_without_early_retry(cloud, monkeypatch):
+    monkeypatch.setattr(httpx, "post", lambda url, **kwargs: httpx.Response(
+        429, json={"error": {"code": "slow_down"}}, headers={"Retry-After": "90"},
+        request=httpx.Request("POST", url)))
+    monkeypatch.setattr("app.model_backend.time.sleep", lambda _: pytest.fail("Do not block or retry early"))
+    with pytest.raises(ModelBackendError, match="at least 90 seconds"):
+        CloudEmbeddings().embed_query("test")
+
+
+def test_persistent_throttling_stops_after_bounded_retries(cloud, monkeypatch):
+    calls, delays = [], []
+    def post(url, **kwargs):
+        calls.append(url)
+        return httpx.Response(429, json={"error": {"code": "rate_limit_exceeded"}},
+                              request=httpx.Request("POST", url))
+    monkeypatch.setattr(httpx, "post", post)
+    monkeypatch.setattr("app.model_backend.time.sleep", delays.append)
+    with pytest.raises(ModelBackendError, match="after automatic retries"):
+        CloudEmbeddings().embed_query("test")
+    assert len(calls) == 3
+    assert len(delays) == 2
+
+
+def test_partial_demo_setup_resumes_without_reembedding_completed_batches(cloud, monkeypatch, tmp_path):
+    original = httpx.post
+    attempts = []
+    def post(url, **kwargs):
+        attempts.append(url)
+        if len(attempts) == 2:
+            return httpx.Response(429, json={"error": {"code": "insufficient_quota"}},
+                                  request=httpx.Request("POST", url))
+        return original(url, **kwargs)
+    monkeypatch.setattr(httpx, "post", post)
+    svc = ResearchService(source_db=str(tmp_path / "source"), exp_db=str(tmp_path / "experiment"))
+    with pytest.raises(ModelBackendError):
+        svc.prepare_demo_corpus()
+    assert svc._source_count() == 16
+    svc.prepare_demo_corpus()
+    assert svc._source_count() == 64
+    assert sum(len(payload["input"]) for _, _, payload in cloud) == 64

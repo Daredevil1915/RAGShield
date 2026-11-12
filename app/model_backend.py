@@ -4,6 +4,10 @@ from __future__ import annotations
 import hashlib
 import math
 import os
+import random
+import time
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from urllib.parse import urlsplit
 
 import httpx
@@ -74,22 +78,70 @@ def embedding_namespace() -> str:
 
 def _post(kind: str, path: str, payload: dict) -> dict:
     base, key, _ = require_cloud_config(kind)
-    try:
-        response = httpx.post(base + path, headers={"Authorization": f"Bearer {key}"},
-                              json=payload, timeout=httpx.Timeout(120, connect=10))
-        response.raise_for_status()
-        data = response.json()
-        if not isinstance(data, dict):
-            raise ValueError
-        return data
-    except httpx.HTTPStatusError as exc:
-        code = exc.response.status_code
-        hint = {401: "Check the API key.", 403: "Check model access.",
-                404: "Check the API base URL and model name.",
-                429: "Provider quota or rate limit reached; check billing or retry later."}.get(code, "Try again later.")
-        raise ModelBackendError(f"Cloud {kind} API returned HTTP {code}. {hint}") from None
-    except (httpx.HTTPError, ValueError):
-        raise ModelBackendError(f"Cloud {kind} API could not be reached or returned invalid JSON.") from None
+    for attempt in range(3):
+        try:
+            response = httpx.post(base + path, headers={"Authorization": f"Bearer {key}"},
+                                  json=payload, timeout=httpx.Timeout(120, connect=10))
+            response.raise_for_status()
+            data = response.json()
+            if not isinstance(data, dict):
+                raise ValueError
+            return data
+        except httpx.HTTPStatusError as exc:
+            code = exc.response.status_code
+            try:
+                error = exc.response.json().get("error", {})
+                error = error if isinstance(error, dict) else {}
+            except (ValueError, AttributeError):
+                error = {}
+            # Only map known codes. Never display arbitrary provider messages.
+            quota_hints = {
+                "insufficient_quota": "API quota is unavailable or exhausted. Check the provider's API billing and project limits. Retrying alone will not restore access.",
+                "credit_balance_exhausted": "API credits are exhausted. Add credits in the provider's API billing settings before retrying.",
+                "billing_not_active": "API billing is not active. Enable it in the provider's account before retrying.",
+                "project_spend_limit_exceeded": "The API project's spending limit has been reached. Check that project's billing limits before retrying.",
+                "organization_spend_limit_exceeded": "The organization's API spending limit has been reached. Check its billing limits before retrying.",
+                "organization_usage_limit_exceeded": "The organization's API usage limit has been reached. Request a higher provider limit or wait for the reset.",
+                "usage_limit_exceeded": "An API usage or billing limit has been reached. Check the provider account's limits before retrying.",
+            }
+            reason = error.get("code") if isinstance(error.get("code"), str) else None
+            error_type = error.get("type") if isinstance(error.get("type"), str) else None
+            if reason not in quota_hints and error_type in quota_hints:
+                reason = error_type
+            if reason in quota_hints:
+                raise ModelBackendError(f"Cloud {kind} API returned HTTP {code}. {quota_hints[reason]}") from None
+            transient = code == 429 and reason in {"rate_limit_exceeded", "slow_down"}
+            delay = _retry_delay(exc.response, attempt)
+            if transient and attempt < 2 and delay <= 10:
+                time.sleep(delay)
+                continue
+            hint = {401: "Check the API key.", 403: "Check model access.",
+                    404: "Check the API base URL and model name.",
+                    429: "The provider did not identify whether this is a rate or quota limit. Check API billing and limits before retrying."}.get(code, "Try again later.")
+            if transient:
+                hint = (f"Temporary rate limit. Wait at least {math.ceil(delay)} seconds before trying again."
+                        if delay > 10 else "Temporary rate limit remains after automatic retries. Try again shortly.")
+            raise ModelBackendError(f"Cloud {kind} API returned HTTP {code}. {hint}") from None
+        except (httpx.HTTPError, ValueError):
+            raise ModelBackendError(f"Cloud {kind} API could not be reached or returned invalid JSON.") from None
+
+
+def _retry_delay(response: httpx.Response, attempt: int) -> float:
+    value = response.headers.get("Retry-After")
+    if value:
+        try:
+            seconds = float(value)
+            if math.isfinite(seconds):
+                return max(0, seconds)
+        except ValueError:
+            try:
+                when = parsedate_to_datetime(value)
+                if when.tzinfo is None:
+                    when = when.replace(tzinfo=timezone.utc)
+                return max(0, (when - datetime.now(timezone.utc)).total_seconds())
+            except (ValueError, TypeError, OverflowError):
+                pass
+    return 0.5 * (2 ** attempt) + random.uniform(0, 0.25)
 
 
 class CloudLLM:

@@ -60,6 +60,7 @@ def render():
             if status.get("error") and not demo:
                 st.warning("The research corpus has not been configured. Use the demo corpus or follow the research setup guide.")
             elif st.button("Prepare research workspace", type="primary", icon=":material/science:"):
+                setup = None
                 try:
                     with st.status("Preparing the research workspace...", expanded=True) as setup:
                         if demo:
@@ -70,6 +71,8 @@ def render():
                         setup.update(label="Research workspace ready", state="complete")
                     st.rerun()
                 except Exception as exc:
+                    if setup is not None:
+                        setup.update(label="Research setup needs attention", state="error", expanded=True)
                     st.error(f"Setup could not finish: {exc}")
         columns = st.columns(3)
         for column, args in zip(columns, [

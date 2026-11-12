@@ -156,6 +156,17 @@ def test_ui_research_setup_is_one_step(ui, monkeypatch):
     assert any(button.label == "Run clean baseline" for button in ui.button)
 
 
+def test_ui_research_setup_failure_is_visible_and_retryable(ui, monkeypatch):
+    svc = research_workspace(ui, monkeypatch, ready=False)
+    def fail():
+        raise RuntimeError("API credits are exhausted. Add credits before retrying.")
+    monkeypatch.setattr(svc, "prepare_demo_corpus", fail)
+    next(button for button in ui.button if button.label == "Prepare research workspace").click().run()
+    assert not ui.exception
+    assert any("API credits are exhausted" in item.value for item in ui.error)
+    assert any(button.label == "Prepare research workspace" for button in ui.button)
+
+
 def test_ui_research_runs_baseline_and_compares_results(ui, monkeypatch):
     research_workspace(ui, monkeypatch)
     experiment = next(button for button in ui.button if button.label == "Run poisoning experiment")
