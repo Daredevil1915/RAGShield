@@ -1,0 +1,25 @@
+# PDF RAG Assistant (app/, ui/, tests/, evaluation/).
+# The research code keeps its own environment; this file does not change it.
+fastapi==0.162.5
+uvicorn[standard]==0.54.0
+python-multipart==0.0.33
+streamlit==1.67.0
+requests==2.34.2
+pypdf==7.0.1
+chromadb==1.5.9
+langchain-core==1.8.0
+langchain-ollama==1.1.0
+langchain-chroma==1.1.0
+langchain-text-splitters==1.1.3
+tiktoken==0.14.0
+python-dotenv==1.2.4
+httpx==0.28.1
+
+# Security Research mode: BBO (bbo_attack.py) needs scikit-learn + numpy.
+# (Fresh GCG additionally needs torch + transformers; left out to keep the image
+# lean — pre-made GCG blockers reproduce the report without them.)
+scikit-learn==1.9.1
+
+# tests
+pytest==9.2.0
+fpdf2==2.9.0

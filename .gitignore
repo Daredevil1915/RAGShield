@@ -1,0 +1,44 @@
+# Secrets and machine settings
+.env
+.env.*
+!.env.example
+.streamlit/secrets.toml
+*.pem
+*.key
+
+# Python environments and caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.cache/
+.cache/
+.coverage
+htmlcov/
+*.egg-info/
+
+# Runtime documents, indexes and experiment output
+data/
+db/
+logs/
+*.log
+evaluation/results/
+evaluation/research_runs/
+attack_results/
+suffix_attack_results/*
+!suffix_attack_results/batch_blockers_distraction_nosuffix_valid18.json
+
+# Vendored packages, backups, private reports and large research artifacts
+ART/
+gguf_pkg/
+langchain_pkg/
+_demo_fix_backup/
+_pre_cpu_tuning_backup/
+*.docx
+*.pdf
+*.png
+msmarco_corpus.json
+diag_out.txt
+.DS_Store
+Thumbs.db

@@ -1,0 +1,56 @@
+{
+  "document": "usenixsecurity25-shafran.pdf",
+  "notes": "Pages are PDF page numbers (page 1 is the USENIX cover page). 'keywords' is a list of groups: the answer is correct only if, for EVERY group, it contains at least one of that group's alternatives (case-insensitive). Unanswerable questions must come back as not_found.",
+  "answerable": [
+    {"id": "A1", "question": "What is a jamming attack on a RAG system?", "pages": [2, 4, 5],
+     "keywords": [["blocker", "not answer", "refus", "denial", "prevent"]]},
+    {"id": "A2", "question": "Who are the authors of the paper?", "pages": [1, 2],
+     "keywords": [["Shafran"]]},
+    {"id": "A3", "question": "What are the three target responses R1, R2 and R3 used for jamming?", "pages": [5],
+     "keywords": [["insufficient", "enough information", "don't know"], ["unsafe", "harmful", "safety"], ["false", "misleading", "correctness"]]},
+    {"id": "A4", "question": "Which methods do the authors investigate for generating blocker documents?", "pages": [2, 5, 6],
+     "keywords": [["instruction"], ["oracle"], ["black-box", "bbo"]]},
+    {"id": "A5", "question": "How many tokens does the black-box optimized blocker contain, and for how many iterations is it optimized?", "pages": [6],
+     "keywords": [["50"], ["1000", "1,000"]]},
+    {"id": "A6", "question": "What retrieval accuracy is achieved by prepending the query to the blocker document?", "pages": [5, 7],
+     "keywords": [["97"]]},
+    {"id": "A7", "question": "Which defenses against blocker documents are evaluated?", "pages": [3, 9, 12, 13, 14, 15],
+     "keywords": [["perplexity", "paraphras", "context size", "fine-tun", "secalign", "struq"]]},
+    {"id": "A8", "question": "At which conference was this paper published?", "pages": [1, 2],
+     "keywords": [["USENIX Security"]]},
+    {"id": "A9", "question": "How do LLM safety scores relate to vulnerability to jamming?", "pages": [3, 11],
+     "keywords": [["higher", "correlat", "more vulnerable"]]},
+    {"id": "A10", "question": "What capabilities does the attacker have in the threat model?", "pages": [4, 5],
+     "keywords": [["insert", "edit", "add"]]}
+  ],
+  "follow_ups": [
+    {
+      "id": "F1",
+      "history": [
+        {"role": "user", "content": "What is the black-box optimization (BBO) method for blocker documents?"},
+        {"role": "assistant", "content": "BBO builds the jamming sub-document by hill-climbing: it repeatedly replaces random tokens and keeps the candidate whose RAG response is most similar to the target refusal [1]."}
+      ],
+      "question": "How many iterations does it run for?",
+      "pages": [6, 7],
+      "keywords": [["1000", "1,000", "160"]]
+    },
+    {
+      "id": "F2",
+      "history": [
+        {"role": "user", "content": "Who are the authors of the paper?"},
+        {"role": "assistant", "content": "The authors are Avital Shafran, Roei Schuster and Vitaly Shmatikov [1]."}
+      ],
+      "question": "Which university is the first author from?",
+      "pages": [1, 2],
+      "keywords": [["Hebrew University"]]
+    }
+  ],
+  "unanswerable": [
+    {"id": "U1", "question": "What is the capital of France?"},
+    {"id": "U2", "question": "Who won the 2022 FIFA World Cup?"},
+    {"id": "U3", "question": "How do I bake sourdough bread at home?"},
+    {"id": "U4", "question": "What is the current stock price of Nvidia?"},
+    {"id": "U5", "question": "Write a poem about the ocean."},
+    {"id": "U6", "question": "What jamming success rate did the attack achieve against GPT-5?"}
+  ]
+}

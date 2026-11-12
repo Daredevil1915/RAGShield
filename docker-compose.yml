@@ -1,0 +1,83 @@
+# Full stack:  docker compose up --build      then open http://localhost:8501
+#
+#   ollama       model server (Mistral 7B + nomic-embed-text), models kept in a volume
+#   ollama-pull  one-shot job: downloads both models on first start (~4.7 GB), then exits
+#   api          FastAPI backend          http://localhost:8000/docs
+#   ui           Streamlit frontend       http://localhost:8501
+#
+# NVIDIA GPU: uncomment the `deploy` block under `ollama` (needs the NVIDIA
+# Container Toolkit). Without it, Mistral runs on CPU: it works, but expect
+# 20-60 s per answer.
+#
+# Already running Ollama on the host (with both models pulled)? Skip the ollama services:
+#   OLLAMA_BASE_URL=http://host.docker.internal:11434 docker compose up --build --no-deps api ui
+
+services:
+  ollama:
+    image: ollama/ollama:latest
+    volumes:
+      - ollama_models:/root/.ollama
+    ports:
+      - "11434:11434"
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+  ollama-pull:
+    image: ollama/ollama:latest
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["/bin/sh", "-c", "ollama pull ${OLLAMA_LLM_MODEL:-mistral} && ollama pull ${OLLAMA_EMBED_MODEL:-nomic-embed-text}"]
+    restart: "no"
+
+  api:
+    build: .
+    environment:
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
+      OLLAMA_LLM_MODEL: ${OLLAMA_LLM_MODEL:-mistral}
+      OLLAMA_EMBED_MODEL: ${OLLAMA_EMBED_MODEL:-nomic-embed-text}
+      APP_DB_DIR: /code/data/app_chroma
+    volumes:
+      - app_data:/code/data
+    ports:
+      - "8000:8000"
+    depends_on:
+      ollama-pull:
+        condition: service_completed_successfully
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=5)"]
+      interval: 10s
+      timeout: 6s
+      retries: 30
+    restart: unless-stopped
+
+  ui:
+    build: .
+    command: ["streamlit", "run", "ui/streamlit_app.py", "--server.address=0.0.0.0", "--server.port=8501", "--browser.gatherUsageStats=false"]
+    environment:
+      API_URL: http://api:8000
+    ports:
+      - "8501:8501"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  ollama_models:
+  app_data:

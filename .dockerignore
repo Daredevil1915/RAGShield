@@ -1,0 +1,22 @@
+# Keep the build context small: the image only needs rag_utils.py, app/, ui/,
+# tests/, evaluation/ and requirements-app.txt. Research data stays out.
+*
+!rag_utils.py
+!requirements-app.txt
+!scripts/
+!examples/
+!suffix_attack/
+!bbo_attack.py
+!msmarco_queries_valid18.txt
+!msmarco_query_meta.json
+!suffix_attack_results/
+!pytest.ini
+!app/
+!ui/
+!tests/
+!evaluation/
+**/__pycache__
+evaluation/results
+evaluation/research_runs
+suffix_attack_results/*
+!suffix_attack_results/batch_blockers_distraction_nosuffix_valid18.json

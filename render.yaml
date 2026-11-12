@@ -1,0 +1,26 @@
+# Set OLLAMA_BASE_URL to a hosted Ollama server, never your laptop's localhost.
+services:
+  - type: web
+    name: ragshield
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements-app.txt && python -c "import tiktoken; tiktoken.get_encoding('cl100k_base')"
+    startCommand: python scripts/start_render.py
+    healthCheckPath: /_stcore/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.8
+      - key: TIKTOKEN_CACHE_DIR
+        value: /opt/render/project/src/.cache/tiktoken
+      - key: APP_DB_DIR
+        value: /opt/render/project/src/data/app_chroma
+      - key: APP_RESEARCH_DEMO
+        value: '1'
+      - key: OLLAMA_BASE_URL
+        sync: false
+      - key: OLLAMA_LLM_MODEL
+        value: mistral
+      - key: OLLAMA_EMBED_MODEL
+        value: nomic-embed-text
+      - key: DEMO_PASSWORD
+        generateValue: true
