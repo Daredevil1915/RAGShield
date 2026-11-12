@@ -8,9 +8,9 @@ The default hosted configuration prioritizes a usable visitor experience:
 
 - A built-in three-page PDF is indexed automatically.
 - Word-feature retrieval runs on Render with no embedding API, credits or model downloads.
-- Ollama Cloud generates live answers when its configured key is available.
-- If generation fails, document Q&A returns exact retrieved sentences with citations and a visible **Source-only answer** label.
-- The 64-passage research corpus is prepared automatically. Live experiments use the cloud model; an explicitly recorded project run can be explored independently.
+- Document Q&A returns exact retrieved sentences with citations and a visible **Source-only answer** label.
+- The 64-passage research corpus is prepared automatically. Live experiments inject a blocker and compare real retrieval contexts, then restore the collection. They do not claim to evaluate LLM jamming.
+- A recorded LLM project run is labelled separately. Optional cloud generation and full LLM experiments can be enabled by the owner.
 
 Word-feature retrieval uses vocabulary overlap. It is intentionally lighter than a semantic embedding model and may miss paraphrases. Research never replaces a failed live run with a fabricated outcome.
 
@@ -19,14 +19,15 @@ Word-feature retrieval uses vocabulary overlap. It is intentionally lighter than
 [Deploy to Render](https://render.com/deploy?repo=https://github.com/Daredevil1915/RAGShield)
 
 1. Create a Blueprint from this repository. Render reads `render.yaml`.
-2. Enter `OLLAMA_API_KEY` from [Ollama account keys](https://ollama.com/settings/keys) to enable live generation. OpenAI credentials are not required for the public demo.
+2. No model API credentials are required for the default Blueprint. Optional Ollama Cloud credentials can be added later.
 3. Open the service URL. There is no login or visitor configuration step.
-4. Try a suggested question about the sample guide, upload a PDF, or open Security Research and run a clean baseline followed by a prebuilt-blocker experiment.
+4. Try a suggested question about the guide, upload a PDF, or open Security Research and select **Run retrieval experiment**. Edit the blocker text or context depth to explore how retrieval changes.
 
 | Variable | Public demo value | Purpose |
 | --- | --- | --- |
 | `APP_PUBLIC_DEMO` | `1` | Enables no-key retrieval, the sample guide and source-only fallback |
-| `MODEL_PROVIDER` | `ollama_cloud` | Uses Ollama's hosted API for live generation |
+| `APP_DEMO_LIVE_LLM` | `0` | Keeps the visitor workflow independent of model API billing |
+| `MODEL_PROVIDER` | `ollama_cloud` | Provider used if optional live generation is enabled |
 | `EMBEDDING_PROVIDER` | `hashing` | Deterministic word-feature vectors on Render |
 | `APP_RESEARCH_DEMO` | `1` | Uses the small demonstration corpus |
 | `APP_MIN_RELEVANCE` | `0.08` | Demo retrieval threshold |
@@ -49,7 +50,11 @@ cp .env.example .env
 python scripts/start_render.py
 ```
 
-Open http://localhost:10000. Add `OLLAMA_API_KEY` in `.env` for live cloud generation. Your own computer is not needed once the app is deployed on Render. Store secrets in environment settings; never commit them.
+Open http://localhost:10000. Your own computer is not needed once the app is deployed on Render. Store any optional provider secrets in environment settings; never commit them.
+
+## Optional live LLM demonstration
+
+Set `APP_DEMO_LIVE_LLM=1` and configure `OLLAMA_API_KEY` from [Ollama account keys](https://ollama.com/settings/keys) with working provider access. This enables live cloud generation and full clean-versus-poisoned LLM experiments while retaining no-key word-feature retrieval. Provider billing and rate limits apply in this optional mode. Document Q&A falls back to labelled source excerpts if generation fails; research never fabricates a model verdict.
 
 ## Optional semantic retrieval
 
@@ -71,6 +76,6 @@ Embedding model/provider changes use separate collections. Re-upload documents a
 
 ## Provider availability
 
-The public demo never calls OpenAI embeddings. If Ollama Cloud is unavailable, PDF retrieval and source-only answers continue; live attack evaluation requires generation. The recorded project experiment is labelled and kept separate from fresh results.
+The default public demo makes no model API calls. Source-excerpt Q&A and retrieval-poisoning experiments run on Render. The optional live LLM mode depends on its configured provider; recorded project results are labelled and kept separate from fresh results.
 
 In optional semantic mode, HTTP 429 can indicate account quota or temporary throttling. Known quota/billing errors require account action. Identified transient rate limits receive bounded retries that respect `Retry-After`; partial corpus setup resumes without re-embedding completed batches. See the [OpenAI error-code reference](https://developers.openai.com/api/docs/guides/error-codes).

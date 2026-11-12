@@ -201,7 +201,7 @@ for message in ss.messages:
     avatar = ":material/person:" if message["role"] == "user" else ":material/shield:"
     with st.chat_message(message["role"], avatar=avatar):
         if message.get("generation_mode") == "extractive":
-            st.caption("SOURCE-ONLY ANSWER | Cloud generation is unavailable; these are extracted passages, not an LLM response.")
+            st.caption("SOURCE-ONLY ANSWER | Retrieved sentences with citations; this is not a generated LLM response.")
         st.markdown(message["content"])
         if message["role"] == "assistant":
             render_sources(message)

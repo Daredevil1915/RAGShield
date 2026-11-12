@@ -31,6 +31,10 @@ def public_demo_mode() -> bool:
     return os.getenv("APP_PUBLIC_DEMO", "1") == "1" and get_model_provider() != "ollama"
 
 
+def demo_live_generation_enabled() -> bool:
+    return not public_demo_mode() or os.getenv("APP_DEMO_LIVE_LLM", "0") == "1"
+
+
 def get_embedding_provider() -> str:
     if public_demo_mode():
         return "hashing"
@@ -125,7 +129,7 @@ def _post(kind: str, path: str, payload: dict) -> dict:
             if transient and attempt < 2 and delay <= 10:
                 time.sleep(delay)
                 continue
-            hint = {401: "Check the API key.", 403: "Check model access.",
+            hint = {401: "Check the API key.", 402: "The model provider requires payment or available credits. The default public demo does not require this API.", 403: "Check model access.",
                     404: "Check the API base URL and model name.",
                     429: "The provider did not identify whether this is a rate or quota limit. Check API billing and limits before retrying."}.get(code, "Try again later.")
             if transient:
@@ -162,6 +166,8 @@ class CloudLLM:
         self._unavailable_until = 0.0
 
     def invoke(self, prompt: str) -> str:
+        if not demo_live_generation_enabled():
+            raise ModelBackendError("The public demo uses source-only answers. Live cloud generation is optional.")
         if public_demo_mode() and time.monotonic() < self._unavailable_until:
             raise ModelBackendError("Cloud generation is temporarily unavailable. Source-only document answers remain available.")
         try:
@@ -255,6 +261,9 @@ def cloud_status() -> dict:
         if embedding_provider == "hashing":
             result.update(configured=True, public_demo=public_demo_mode(), retrieval="keyword",
                           embedding_model="Render word-feature search", models={"llm": False, "embeddings": True})
+            if not demo_live_generation_enabled():
+                result["generation"] = "source_only"
+                return result
             try:
                 require_cloud_config("chat")
                 result["models"]["llm"] = True

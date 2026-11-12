@@ -26,9 +26,10 @@ RAGShield connects a document question-answering workflow with an experimental e
 | **Document Q&A** | Upload PDFs, ask follow-up questions, filter the document library, and inspect answers with page-level citations. |
 | **Security Research** | Compare clean and poisoned responses, inspect blocker retrieval, measure answer jamming, and export experiment results. |
 
-The public demo opens with a built-in PDF and a prepared research corpus. **Ollama Cloud generates live answers**;
-lightweight **word-feature search runs on Render** without embedding API credits or model downloads. If generation is
-unavailable, document Q&A shows clearly labelled source excerpts with citations. No running developer laptop is required.
+The public demo runs **without external API keys or credits**. It opens with a built-in PDF, cited source-excerpt
+answers, and a real before-and-after retrieval-poisoning experiment. Lightweight word-feature search runs on Render;
+no model downloads or running developer laptop are required. Optional cloud generation and full LLM jamming evaluation
+remain available in the advanced configuration.
 
 **[Open the live demo](https://ragshield-aqw1.onrender.com)** | Start with a suggested question or upload your own PDF.
 
@@ -51,9 +52,9 @@ flowchart LR
     EMB --> DB[(ChromaDB)]
     API --> RET[Semantic retrieval]
     DB --> RET
-    RET --> LLM[Ollama Cloud]
+    RET --> LLM[Optional cloud generation]
     LLM --> CHECK[Grounding and citations]
-    RET -. Generation unavailable .-> EX[Source-only excerpts]
+    RET --> EX[Source-only excerpts]
     EX --> CHECK
     CHECK --> UI
 ```
@@ -64,7 +65,7 @@ The research module uses a separate experimental collection to compare the clean
 
 ## Quick start
 
-**Requirements:** Python 3.12. An Ollama Cloud API key enables live generation; document search and source-only answers work without one. OpenAI credits are not required for the public demo.
+**Requirements:** Python 3.12. The default public demo needs no model API keys. Advanced live LLM mode requires a configured provider account with available access and credits.
 
 ```bash
 git clone https://github.com/Daredevil1915/RAGShield.git
@@ -79,14 +80,14 @@ pip install -r requirements-app.txt
 cp .env.example .env
 ```
 
-Set `OLLAMA_API_KEY` in `.env` to enable live generation, then start the application:
+The default `.env.example` uses the API-free public mode. Start the application:
 
 ```bash
 python scripts/start_render.py
 ```
 
 Open **http://localhost:10000**. The guide is indexed automatically. Ask a suggested question, upload a text-based PDF,
-or switch to Security Research for a live comparison or a clearly labelled recorded project experiment.
+or switch to Security Research for live retrieval poisoning and a clearly labelled recorded LLM project experiment.
 
 For hosted setup, follow the **[Render deployment guide](docs/DEPLOYMENT.md#deploy-on-render)**. Provider alternatives, environment settings and storage configuration are documented there.
 
@@ -97,8 +98,9 @@ The project studies **availability attacks on RAG systems** using black-box bloc
 The hosted research demo contains 64 MS-MARCO passages. It demonstrates the experimental workflow; it does not reproduce the original 50,024-passage benchmark. Grounding checks are heuristic and do not guarantee factual correctness or prompt-injection resistance.
 
 Public demo search uses shared vocabulary, not learned semantic similarity, and may miss paraphrases. Hosted semantic
-embeddings remain available with `APP_PUBLIC_DEMO=0` and `EMBEDDING_PROVIDER=openai`. Live research requires a working
-cloud model; recorded results and source-only answers are always identified separately.
+embeddings remain available with `APP_PUBLIC_DEMO=0` and `EMBEDDING_PROVIDER=openai`. The public research mode measures
+retrieval effects without LLM judgement. Enable `APP_DEMO_LIVE_LLM=1` with a working cloud account for full live LLM
+experiments; recorded results and source-only answers are always identified separately.
 
 See **[Research methodology and evaluation](docs/RESEARCH.md)** for experimental definitions, corpus scope and reproduction requirements.
 

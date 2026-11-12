@@ -18,6 +18,7 @@ from app.services import build_services, index_pdf
 def public_demo(monkeypatch, tmp_path):
     monkeypatch.setenv("MODEL_PROVIDER", "ollama_cloud")
     monkeypatch.setenv("APP_PUBLIC_DEMO", "1")
+    monkeypatch.setenv("APP_DEMO_LIVE_LLM", "0")
     monkeypatch.setenv("APP_RESEARCH_DEMO", "1")
     monkeypatch.setenv("EMBEDDING_PROVIDER", "openai")  # Existing Render setting must not break the public demo.
     monkeypatch.setenv("APP_DB_DIR", str(tmp_path / "documents"))
@@ -75,7 +76,41 @@ def test_public_research_corpus_prepares_without_an_embedding_api(public_demo, t
     assert svc.ensure_experiment_collection() == {"ready": True, "source": 64, "copied": 64}
 
 
+def test_live_retrieval_experiment_measures_actual_poisoning_and_restores_ids(public_demo, tmp_path):
+    svc = ResearchService(source_db=str(tmp_path / "source"), exp_db=str(tmp_path / "experiment"))
+    svc.prepare_demo_corpus()
+    svc.ensure_experiment_collection()
+    before = set(svc._exp_collection_obj().get(include=[])["ids"])
+    result = svc.run_retrieval_experiment("who is huitzilopochtli", "Huitzilopochtli " * 20 + "conflicting unsupported accounts", top_k=5)
+    assert result["mode"] == "retrieval_only" and result["jamming_evaluated"] is False
+    assert result["blocker_retrieved"] and result["blocker_rank"] == 1
+    assert result["original_passages_retained"] == 4
+    assert result["collection_restored"]
+    assert set(svc._exp_collection_obj().get(include=[])["ids"]) == before
+
+
+def test_failed_retrieval_intervention_also_restores_collection(public_demo, tmp_path, monkeypatch):
+    svc = ResearchService(source_db=str(tmp_path / "source"), exp_db=str(tmp_path / "experiment"))
+    svc.prepare_demo_corpus()
+    svc.ensure_experiment_collection()
+    collection = svc._exp_collection_obj()
+    before = set(collection.get(include=[])["ids"])
+    original = collection.query
+    calls = []
+    def query(**kwargs):
+        calls.append(1)
+        if len(calls) == 2:
+            raise RuntimeError("test retrieval failure")
+        return original(**kwargs)
+    monkeypatch.setattr(svc, "_exp_collection_obj", lambda: collection)
+    monkeypatch.setattr(collection, "query", query)
+    with pytest.raises(RuntimeError, match="test retrieval failure"):
+        svc.run_retrieval_experiment("who is huitzilopochtli", "Huitzilopochtli unsupported")
+    assert set(collection.get(include=[])["ids"]) == before
+
+
 def test_cloud_generation_still_runs_when_available(public_demo, monkeypatch):
+    monkeypatch.setenv("APP_DEMO_LIVE_LLM", "1")
     monkeypatch.setenv("OLLAMA_API_KEY", "test-ollama-key")
     calls = []
     def post(url, **kwargs):
@@ -91,6 +126,7 @@ def test_cloud_generation_still_runs_when_available(public_demo, monkeypatch):
 
 
 def test_cloud_quota_failure_keeps_demo_usable_and_avoids_repeated_calls(public_demo, monkeypatch):
+    monkeypatch.setenv("APP_DEMO_LIVE_LLM", "1")
     monkeypatch.setenv("OLLAMA_API_KEY", "test-cloud-key")
     calls = []
     def post(url, **kwargs):

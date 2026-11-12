@@ -51,6 +51,6 @@ Retrieval thresholds and lexical grounding checks are heuristics. They do not gu
 
 ## Public demo interpretation
 
-The public deployment uses word-feature retrieval on Render, not learned semantic embeddings. Live experiments still call the configured cloud generator. Judge-based grading can be enabled explicitly; the quick public workflow defaults to refusal markers. Results must be interpreted in that configuration.
+The public deployment uses word-feature retrieval on Render, not learned semantic embeddings. Default live experiments measure real vector-retrieval changes without a cloud model or jamming judgement. The optional live LLM mode calls the configured cloud generator; judge-based grading can be enabled explicitly there. Results must be interpreted in that configuration.
 
 `examples/recorded_experiment.json` preserves a supplied project run: the blocker ranked first and was retrieved, but the answer survived. Its provenance is recorded and the source artifact did not store model configuration. This example is displayed as a recorded execution, never as a fresh cloud run or a current-demo benchmark result.

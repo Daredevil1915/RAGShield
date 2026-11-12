@@ -18,13 +18,13 @@ services:
         value: '1'
       - key: APP_PUBLIC_DEMO
         value: '1'
+      - key: APP_DEMO_LIVE_LLM
+        value: '0'
       - key: MODEL_PROVIDER
         value: ollama_cloud
       - key: EMBEDDING_PROVIDER
         value: hashing
       - key: APP_MIN_RELEVANCE
         value: '0.08'
-      - key: OLLAMA_API_KEY
-        sync: false
       - key: OLLAMA_CLOUD_MODEL
         value: gemma4:31b

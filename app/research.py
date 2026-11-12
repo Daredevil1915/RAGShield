@@ -41,6 +41,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
+from uuid import uuid4
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -336,6 +337,60 @@ class ResearchService:
         return {"query": query, "answer": answer, "refuses": looks_like_refusal(answer), "passages": passages}
 
     # ── blockers: pre-made (default) or fresh (reuse generators) ───────────────
+    @_exclusive
+    def run_retrieval_experiment(self, query: str, full_blocker: str, top_k: Optional[int] = None) -> Dict[str, Any]:
+        """A live retrieval-only intervention; never calls a generator or LLM judge."""
+        from rag_utils import create_embeddings, safe_display
+
+        collection = self._exp_collection_obj()
+        before_ids = set(collection.get(include=[])["ids"])
+        if not before_ids:
+            raise RuntimeError("Prepare a non-empty experiment collection first.")
+        k = self.k if top_k is None else top_k
+        if not 1 <= k <= 50:
+            raise ValueError("Context size must be between 1 and 50.")
+        embed = create_embeddings()
+        query_vector = embed.embed_query(query)
+        started = time.perf_counter()
+
+        def retrieve(n):
+            count = collection.count()
+            # The small corpus has many zero-overlap ties. Rank the entire
+            # sample consistently so an insertion does not reshuffle tied noise.
+            requested = count if count <= 1000 else min(n, count)
+            batch = collection.query(query_embeddings=[query_vector], n_results=requested,
+                                     include=["documents", "metadatas", "distances"])
+            rows = [{"id": doc_id, "text": safe_display(text), "distance": float(distance),
+                     "is_blocker": (metadata or {}).get("type") == BLOCKER_TAG}
+                    for doc_id, text, metadata, distance in zip(
+                        batch["ids"][0], batch["documents"][0], batch["metadatas"][0], batch["distances"][0])]
+            rows.sort(key=lambda row: (row["distance"], row["id"]))
+            return [{**row, "rank": rank, "distance": round(row["distance"], 4)}
+                    for rank, row in enumerate(rows[:n], 1)]
+
+        clean = retrieve(k)
+        blocker_id = "demo-blocker-" + uuid4().hex
+        try:
+            collection.add(ids=[blocker_id], documents=[full_blocker], embeddings=embed.embed_documents([full_blocker]),
+                           metadatas=[{"type": BLOCKER_TAG, "source": BLOCKER_TAG, "query": query}])
+            ranked = retrieve(50)
+            poisoned = ranked[:k]
+            rank = next((row["rank"] for row in ranked if row["id"] == blocker_id), -1)
+        finally:
+            collection.delete(ids=[blocker_id])
+            self.sweep_cleanup()
+            self._restore_to_snapshot(before_ids)
+        restored = set(collection.get(include=[])["ids"]) == before_ids
+        if not restored:
+            raise RuntimeError("The experiment collection did not return to its original state.")
+        retained = len({row["id"] for row in clean} & {row["id"] for row in poisoned})
+        return {"mode": "retrieval_only", "query": query, "blocker": full_blocker,
+                "clean_context": clean, "poisoned_context": poisoned,
+                "blocker_rank": rank, "blocker_retrieved": any(row["is_blocker"] for row in poisoned),
+                "original_passages_retained": retained, "context_size": len(clean),
+                "jamming_evaluated": False, "collection_restored": restored,
+                "elapsed_s": round(time.perf_counter() - started, 3), "timestamp": datetime.now().isoformat()}
+
     def _build_blocker_index(self) -> Dict:
         """Index every saved blocker that carries its text, keyed by (style, query) and query."""
         index: Dict[str, Dict[str, Dict]] = {"by_style_query": {}, "by_query": {}}

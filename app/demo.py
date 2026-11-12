@@ -9,7 +9,7 @@ PAGES = [
     ("RAGShield: document question answering",
      "RAGShield lets visitors upload PDFs and ask questions with document and page citations. "
      "The pipeline parses each PDF page, splits text into overlapping chunks, stores vectors in ChromaDB, "
-     "retrieves relevant passages, and asks Ollama Cloud to answer from that evidence. "
+     "retrieves relevant passages, and can ask Ollama Cloud to answer from that evidence in advanced mode. "
      "Source passages remain visible so readers can inspect the evidence behind an answer. "
      "The public demo uses normalized hashed word features for search on the Render server. "
      "This lightweight retrieval matches shared vocabulary; it is not a learned semantic embedding model. "
@@ -24,12 +24,15 @@ PAGES = [
      "adversarial suffix experiments can use prebuilt blocker documents. "
      "The live demo corpus contains 24 gold passages and 40 distractors from the project's MS-MARCO subset. "
      "This 64-passage demonstration is different from the original 50,024-passage benchmark. "
+     "The default public research experiment compares real clean and poisoned vector-search contexts without any model API. "
+     "It measures blocker retrieval and retained passages, not language-model refusal or jamming. "
      "The recorded example in the research workspace is a prior project execution, clearly separated from live runs."),
     ("Reliability, limitations, and deployment",
-     "Ollama Cloud generates live answers without relying on the developer's computer. "
-     "If the cloud generation service is unavailable, document Q&A can display exact sentences "
-     "from retrieved passages with citations. This is labelled source-only mode, not a generated LLM answer. "
-     "Research experiments require a live model and never substitute fabricated attack outcomes. "
+     "The public demo answers with exact retrieved sentences and citations without requiring any model API. "
+     "This is labelled source-only mode, not a generated LLM answer. Ollama Cloud generation can be enabled "
+     "in the advanced configuration and never relies on the developer's computer. "
+     "Language-model jamming experiments require a live model and never substitute fabricated attack outcomes. "
+     "The API-free public experiment measures actual retrieval changes instead. "
      "Demo search relies on vocabulary overlap and can miss paraphrases or synonyms. "
      "Relevance thresholds and lexical grounding checks are heuristics, not guarantees of factual correctness "
      "or prompt-injection resistance. Free Render hosting may take time to wake after inactivity, "

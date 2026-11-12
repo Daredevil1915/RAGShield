@@ -9,7 +9,7 @@ from pathlib import Path
 import streamlit as st
 
 from ui.theme import hero, step_card
-from app.model_backend import public_demo_mode
+from app.model_backend import public_demo_mode, demo_live_generation_enabled
 
 
 @st.cache_resource(show_spinner=False)
@@ -28,6 +28,48 @@ def get_service():
             service.ensure_experiment_collection()
         return service
     return ResearchService()
+
+
+def render_retrieval_demo(svc):
+    st.info("LIVE RETRIEVAL EXPERIMENT | Runs on Render without model APIs or billing.")
+    st.caption("This measures retrieval poisoning. Model refusal and answer jamming are not evaluated in this mode.")
+    queries = [item.query for item in svc.dataset()]
+    default = next((index for index, query in enumerate(queries) if "huitzilopochtli" in query.lower()), 0)
+    with st.container(border=True):
+        st.subheader("Compare clean and poisoned retrieval")
+        query = st.selectbox("Target question", queries, index=default, key="retrieval_target")
+        styles = svc.available_prebuilt_styles(query)
+        style = st.selectbox("Saved blocker style", styles) if styles else None
+        saved = svc.get_prebuilt_blocker(query, style) if style else None
+        text = saved["full_blocker"] if saved else f"Accounts of {query} are conflicting and unverified."
+        blocker = st.text_area("Blocker document", value=text, max_chars=5000, height=140,
+                               key=f"blocker_{query}_{style}", help="Use the saved document or edit it before injection.")
+        depth = st.select_slider("Context passages", options=[1, 3, 5, 10], value=5)
+        if st.button("Run retrieval experiment", type="primary", icon=":material/science:", disabled=not blocker.strip()):
+            try:
+                with st.spinner("Retrieving the clean context, injecting the blocker, and restoring the collection..."):
+                    st.session_state.rs_retrieval = svc.run_retrieval_experiment(query, blocker, top_k=depth)
+            except Exception as exc:
+                st.error(f"The retrieval experiment could not finish: {exc}")
+    result = st.session_state.get("rs_retrieval")
+    if result and result["query"] == query:
+        metrics = st.columns(4)
+        metrics[0].metric("Blocker retrieved", "Yes" if result["blocker_retrieved"] else "No")
+        metrics[1].metric("Blocker rank", result["blocker_rank"] if result["blocker_rank"] > 0 else "Outside top 50")
+        metrics[2].metric("Original context retained", f"{result['original_passages_retained']}/{result['context_size']}")
+        metrics[3].metric("Collection restored", "Yes" if result["collection_restored"] else "No")
+        st.success("Live experiment complete. The injected blocker was removed and the original collection was restored.")
+        st.caption("These are actual vector-search results. A retrieved blocker does not establish language-model jamming.")
+        for column, title, key in zip(st.columns(2), ["Clean context", "Poisoned context"], ["clean_context", "poisoned_context"]):
+            with column:
+                st.subheader(title)
+                for passage in result[key]:
+                    label = "Injected blocker" if passage["is_blocker"] else "Corpus passage"
+                    with st.expander(f"#{passage['rank']} | {label}", expanded=passage["is_blocker"]):
+                        st.caption(f"Distance {passage['distance']:.4f}")
+                        st.write(passage["text"])
+        st.download_button("Download experiment JSON", json.dumps(result, indent=2),
+                           file_name="ragshield-retrieval-experiment.json", mime="application/json")
 
 
 def render():
@@ -118,6 +160,10 @@ def render():
     metrics[2].metric("Retrieval depth", svc.k)
     if demo:
         st.caption("Demo corpus | Results illustrate this sample and model configuration, not the original benchmark.")
+
+    if public_demo_mode() and not demo_live_generation_enabled():
+        render_retrieval_demo(svc)
+        return
 
     st.write("")
     with st.container(border=True):
